@@ -236,10 +236,11 @@ textarea{font:400 12px/1.4 var(--mono);color:var(--ink);background:rgba(255,255,
       </select>
       <div class="chips" id="chips" role="group" aria-label="Regions"></div>
       <div class="seg level" id="level" role="group" aria-label="Quiz level" hidden>
-        <button type="button" data-blind="0" aria-selected="true">Borders on</button>
-        <button type="button" data-blind="1" aria-selected="false">No borders</button>
+        <button type="button" data-level="borders" aria-selected="true">Borders on</button>
+        <button type="button" data-level="blind" aria-selected="false">No borders</button>
+        <button type="button" data-level="cities" aria-selected="false">Cities</button>
       </div>
-      <p class="note level-note" id="level-note" hidden>Satellite imagery only, like MapTap. Borders appear after you answer.</p>
+      <p class="note level-note" id="level-note" hidden></p>
     </section>
 
     <section class="sec" id="p-explore">
@@ -271,6 +272,7 @@ textarea{font:400 12px/1.4 var(--mono);color:var(--ink);background:rgba(255,255,
       <div class="row" style="gap:16px">
         <label class="opt"><input type="checkbox" id="o-weak"> Focus on weak spots</label>
         <label class="opt" id="o-typing-wrap" hidden><input type="checkbox" id="o-typing"> Type answers</label>
+        <label class="opt" id="o-caps-wrap" hidden><input type="checkbox" id="o-caps"> Capitals only</label>
       </div>
     </section>
 
@@ -310,9 +312,11 @@ const S = {
   mode: 'explore', set: prefs.set || 'world',
   groups: new Set(prefs.groups && prefs.groups.length ? prefs.groups : Object.keys(GROUPS)),
   borders: prefs.borders !== false, labels: prefs.labels !== false, mastery: !!prefs.mastery,
-  weak: !!prefs.weak, typing: !!prefs.typing, blind: !!prefs.blind, src: prefs.src === 'esri' ? 'esri' : 'sentinel',
+  weak: !!prefs.weak, typing: !!prefs.typing, capsOnly: !!prefs.capsOnly,
+  level: ['borders', 'blind', 'cities'].includes(prefs.level) ? prefs.level : (prefs.blind ? 'blind' : 'borders'), src: prefs.src === 'esri' ? 'esri' : 'sentinel',
 };
-function savePrefs(){ ls.set('oa-prefs', {blind:S.blind, src:S.src, set:S.set, groups:[...S.groups], borders:S.borders, labels:S.labels, mastery:S.mastery, weak:S.weak, typing:S.typing}); }
+S.blind = S.level !== 'borders'; S.cities = S.level === 'cities';
+function savePrefs(){ ls.set('oa-prefs', {level:S.level, capsOnly:S.capsOnly, src:S.src, set:S.set, groups:[...S.groups], borders:S.borders, labels:S.labels, mastery:S.mastery, weak:S.weak, typing:S.typing}); }
 
 /* ---------------- math ---------------- */
 function ll2v(lon, lat, r = 1, out){
@@ -584,6 +588,7 @@ overlay.renderOrder = 2; scene.add(overlay);
 
 /* ---------------- data ---------------- */
 let ITEMS = [], BYID = new Map(), BYSET = {world: [], IND: [], CHN: []};
+let CITIES = [], BYCITY = new Map();
 const lineLayers = {};
 const outlines = {};
 const outlineGeoms = new Map();
@@ -622,7 +627,7 @@ const P = {data: {}, updated: 0, resets: {}};
 }
 function saveLocal(){ ls.set('oa-progress', {data: P.data, updated: P.updated, resets: P.resets}); }
 // Progress is kept separately for each level: plain ids for "Borders on", "b:" + id for "No borders".
-const lk = (id, blind = S.blind) => (blind ? 'b:' : '') + id;
+const lk = (id, blind = S.blind) => id.startsWith('c:') ? id : (blind ? 'b:' : '') + id; // city ids already carry their own prefix
 function rec(id, blind){ return P.data[lk(id, blind)]; }
 function status(id, blind){
   const r = rec(id, blind); if (!r) return 'new';
@@ -646,7 +651,7 @@ function mergeRemote(remote){
   for (const [k, v] of Object.entries(remote.resets || {})) if (!resets[k] || v > resets[k]) resets[k] = v;
   const out = Object.assign({}, P.data);
   for (const [id, r] of Object.entries(remote.data || {})) if (Array.isArray(r) && (!out[id] || r[3] > out[id][3])) out[id] = r;
-  for (const [id, r] of Object.entries(out)){ const b = id.startsWith('b:'); const it = BYID.get(b ? id.slice(2) : id); const rs = it && resets[it.set + (b ? ':b' : '')]; if (rs && r[3] <= rs) delete out[id]; }
+  for (const [id, r] of Object.entries(out)){ const c = id.startsWith('c:'), b = id.startsWith('b:'); const it = c ? BYCITY.get(id) : BYID.get(b ? id.slice(2) : id); const rs = it && resets[it.set + (c ? ':c' : b ? ':b' : '')]; if (rs && r[3] <= rs) delete out[id]; }
   P.data = out; P.resets = resets; saveLocal();
 }
 const GH = {token: ls.get('oa-gh-token', null), gist: ls.get('oa-gh-gist', null), state: 'off', error: '', last: 0, busy: false, again: false, timer: null};
@@ -985,7 +990,7 @@ let fills = new Map(); // id -> css color
 function hexA(hex, a){ const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${a})`; }
 const MASTERY_COL = {w: '#ff6b5e', l: '#f2b134', m: '#4fd18b'};
 function blindQuiz(){ return S.blind && (S.mode === 'find' || S.mode === 'name'); }
-function masteryOn(){ return (S.mastery && !blindQuiz()) || S.mode === 'progress'; }
+function masteryOn(){ return !(S.cities && S.mode !== 'explore') && ((S.mastery && !blindQuiz()) || S.mode === 'progress'); }
 function drawItem(it, color){
   ovCtx.fillStyle = color; ovCtx.beginPath();
   for (const poly of it.poly) for (const r of poly){
@@ -1027,7 +1032,9 @@ function syncToggles(){
   for (const k in lineLayers) lineLayers[k].visible = !hideLines && (S.borders || blindQuiz()) && (k === 'world' || k === S.set);
   const quizOrProgress = S.mode !== 'explore';
   $('#level').hidden = !quizOrProgress; $('#level-note').hidden = !(quizOrProgress && S.blind);
-  document.querySelectorAll('#level button').forEach(b => b.setAttribute('aria-selected', (b.dataset.blind === '1') === S.blind));
+  $('#level-note').textContent = S.cities ? 'Capitals and major cities on plain imagery, scored by distance like MapTap.' : 'Satellite imagery only, like MapTap. Borders appear after you answer.';
+  document.querySelectorAll('#level button').forEach(b => b.setAttribute('aria-selected', b.dataset.level === S.level));
+  $('#o-caps-wrap').hidden = !(S.cities && S.mode !== 'progress');
   if (lineLayers.world) lineLayers.world.material.uniforms.uOpacity.value = S.set === 'world' ? 0.75 : 0.9;
   dirty = true;
 }
@@ -1039,11 +1046,13 @@ $('#t-mastery').onclick = () => { S.mastery = !S.mastery; savePrefs(); syncToggl
 function poolItems(){
   return activeItems().filter(it => it.pool && (S.set !== 'world' || S.groups.has(it.g)));
 }
+function cityPool(all){ return CITIES.filter(c => c.set === S.set && (S.set !== 'world' || S.groups.has(c.g)) && (all || !S.capsOnly || c.cap > 0)); }
+function quizPool(){ return S.cities ? cityPool() : poolItems(); }
 function renderChips(){
   const el = $('#chips');
   if (S.set !== 'world'){ el.hidden = true; return; }
   el.hidden = false;
-  const counts = {}; for (const it of BYSET.world) if (it.pool) counts[it.g] = (counts[it.g] || 0) + 1;
+  const counts = {}; for (const it of (S.cities && S.mode !== 'explore' ? CITIES.filter(c => c.set === 'world' && (!S.capsOnly || c.cap)) : BYSET.world.filter(i => i.pool))) counts[it.g] = (counts[it.g] || 0) + 1;
   const all = S.groups.size === Object.keys(GROUPS).length;
   el.innerHTML = `<button class="chip" data-g="*" aria-pressed="${all}">All regions</button>` +
     Object.entries(GROUPS).map(([g, n]) => `<button class="chip" data-g="${g}" aria-pressed="${!all && S.groups.has(g)}">${n}<span class="n">${counts[g] || 0}</span></button>`).join('');
@@ -1061,7 +1070,7 @@ $('#chips').addEventListener('click', e => {
   if (S.mode === 'progress') renderProgress();
 });
 function updatePoolCount(){
-  const p = poolItems(); const m = p.filter(it => status(it.id) === 'm').length;
+  const p = S.cities && S.mode !== 'explore' ? quizPool() : poolItems(); const m = p.filter(it => status(it.id) === 'm').length;
   $('#pool-count').textContent = `${m}/${p.length} mastered`;
 }
 $('#set').value = S.set;
@@ -1077,8 +1086,9 @@ $('#set').addEventListener('change', e => {
 document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => enterMode(b.dataset.mode)));
 $('#level').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const blind = b.dataset.blind === '1'; if (blind === S.blind) return;
-  S.blind = blind; savePrefs(); enterMode(S.mode, true);
+  if (b.dataset.level === S.level) return;
+  S.level = b.dataset.level; S.blind = S.level !== 'borders'; S.cities = S.level === 'cities';
+  savePrefs(); renderChips(); enterMode(S.mode, true);
 });
 function enterMode(mode, force){
   if (S.mode === mode && !force) return;
@@ -1088,7 +1098,7 @@ function enterMode(mode, force){
   $('#p-quiz').hidden = !(mode === 'find' || mode === 'name');
   $('#p-progress').hidden = mode !== 'progress';
   canvas.classList.toggle('pointing', mode === 'find');
-  marks = []; fills = new Map(); hideTip();
+  marks = []; fills = new Map(); hideTip(); renderChips();
   ['hover', 'sel', 'target', 'good', 'bad'].forEach(s => setOutline(s, null)); setMiss(null);
   if (mode === 'explore'){ renderInfo(); if (selectedId) selectItem(selectedId, false); }
   if (mode === 'find' || mode === 'name'){ Q.stats = {n: 0, c: 0, streak: 0, pts: 0}; Q.recent = []; newQuestion(); }
@@ -1200,7 +1210,8 @@ function onTap(x, y){
     if (S.mode === 'progress') enterMode('explore');
     selectItem(it.id, false);
   } else if (S.mode === 'find'){
-    if (S.blind){ const ll = pickLL(x, y); if (ll) answerFindBlind(it, ll); }
+    if (S.cities){ const ll = pickLL(x, y); if (ll) answerFindCity(ll); }
+    else if (S.blind){ const ll = pickLL(x, y); if (ll) answerFindBlind(it, ll); }
     else answerFind(it);
   }
 }
@@ -1214,7 +1225,7 @@ function weightOf(it){
   return Math.pow(6 - r[0], 2) * (r[0] >= 3 ? Math.min(1, 0.15 + age / 600) : 1) + (r[2] > r[1] ? 4 : 0);
 }
 function pickNext(){
-  let pool = poolItems();
+  let pool = quizPool();
   if (S.weak){ const w = pool.filter(it => status(it.id) !== 'm'); if (w.length) pool = w; }
   const avoid = new Set(Q.recent.slice(-Math.min(8, Math.floor(pool.length / 2))));
   let cands = pool.filter(it => !avoid.has(it.id)); if (!cands.length) cands = pool;
@@ -1222,7 +1233,15 @@ function pickNext(){
   for (let i = 0; i < cands.length; i++){ r -= ws[i]; if (r <= 0) return cands[i]; }
   return cands[cands.length - 1];
 }
+const cityCountry = c => c.set === 'world' ? c.cn : (c.set === 'IND' ? 'India' : 'China');
+function cityKind(c){
+  if (c.cap === 1) return 'National capital · ' + c.cn;
+  if (c.cap === 2) return (c.set === 'IND' ? 'State or UT capital' : 'Provincial capital') + ' · ' + cityCountry(c);
+  return 'City · ' + cityCountry(c);
+}
+const cityLabel = c => c.set === 'world' ? `${c.n}, ${c.cn}` : `${c.n} (${c.st || cityCountry(c)})`;
 function subFor(it){
+  if (it.isCity) return cityKind(it);
   if (it.set === 'world') return GROUPS[it.g] || '';
   return it.k + ' · ' + (it.set === 'IND' ? 'India' : 'China');
 }
@@ -1237,7 +1256,8 @@ function newQuestion(){
   $('#q-hintbtn').hidden = false; $('#q-skip').hidden = false;
   $('#q-hintbtn').disabled = false;
   const find = S.mode === 'find';
-  $('#q-eyebrow').textContent = (find ? `Find this ${SET_NOUN[S.set]}` : S.blind ? `Where is the pin?` : `Name this ${SET_NOUN[S.set]}`) + (S.blind ? ' · no borders' : '');
+  const noun = it.isCity ? 'city' : SET_NOUN[S.set];
+  $('#q-eyebrow').textContent = (find ? `Find this ${noun}` : S.blind ? `Name the city at the pin`.replace('city', it.isCity ? 'city' : 'place') : `Name this ${noun}`) + (S.cities ? '' : S.blind ? ' · no borders' : '');
   $('#q-prompt').hidden = !find;
   $('#q-flag').textContent = find ? (it.fl || '') : '';
   $('#q-name').textContent = find ? it.n : '';
@@ -1248,6 +1268,9 @@ function newQuestion(){
   if (find){
     $('#q-choices').hidden = true; $('#q-typed').hidden = true;
     if (S.set !== 'world'){ /* keep view */ }
+  } else if (it.isCity){
+    marks = [{v: it.lv, ring: true}];
+    flyTo(it.ll[1], it.ll[0], fit(S.set === 'world' ? 0.55 : 0.28));
   } else if (S.blind){
     // No outline or fill: just a pin on the imagery, with enough zoomed-out context to read coastlines and terrain
     marks = [{id: it.id, ring: true}];
@@ -1265,14 +1288,14 @@ function newQuestion(){
     } else {
       $('#q-typed').hidden = true; $('#q-choices').hidden = false;
       Q.choices = makeChoices(it);
-      $('#q-choices').innerHTML = Q.choices.map((c, i) => `<button class="choice" data-id="${c.id}"><kbd>${i + 1}</kbd><span>${esc(c.n)}</span></button>`).join('');
+      $('#q-choices').innerHTML = Q.choices.map((c, i) => `<button class="choice" data-id="${c.id}"><kbd>${i + 1}</kbd><span>${esc(c.isCity ? cityLabel(c) : c.n)}</span></button>`).join('');
     }
   }
   updateScore(); redrawOverlay();
 }
 function makeChoices(it){
-  const same = poolItems().filter(o => o.id !== it.id);
-  const all = activeItems().filter(o => o.pool && o.id !== it.id);
+  const same = quizPool().filter(o => o.id !== it.id);
+  const all = (it.isCity ? cityPool(true) : activeItems().filter(o => o.pool)).filter(o => o.id !== it.id);
   const src = same.length >= 3 ? same : all;
   const byDist = src.map(o => [o.lv.angleTo(it.lv), o]).sort((a, b) => a[0] - b[0]);
   const near = byDist.slice(0, 8).map(x => x[1]);
@@ -1287,10 +1310,10 @@ function makeChoices(it){
 function updateScore(){
   $('#q-score').textContent = `${Q.stats.c}/${Q.stats.n}`;
   $('#q-streak').textContent = Q.stats.streak;
-  const pts = S.blind && S.mode === 'find';
+  const pts = S.blind && S.mode === 'find'; // both the No borders and Cities levels
   $('#q-pts-wrap').hidden = !pts;
   if (pts){ $('#q-pts').textContent = Q.stats.pts || 0; $('#q-avg').textContent = Q.stats.n ? `(avg ${Math.round((Q.stats.pts || 0) / Q.stats.n)})` : ''; }
-  const p = poolItems(); const left = p.filter(it => status(it.id) !== 'm').length;
+  const p = quizPool(); const left = p.filter(it => status(it.id) !== 'm').length;
   $('#q-left').textContent = `${left} to master`;
   updatePoolCount();
 }
@@ -1375,6 +1398,39 @@ function answerFindBlind(it, ll){
   setOutline('hover', null);
   redrawOverlay(); finish(inside);
 }
+// City points: full marks within 25 km, then falling off with distance. 70+ points (about 150 km) counts as a hit for mastery.
+function cityPoints(km){ return km <= 25 ? 100 : Math.max(0, Math.round(100 * Math.exp(-(km - 25) / 350))); }
+function compass(fromLL, toLL){
+  const p1 = fromLL[1] * DEG, p2 = toLL[1] * DEG, dl = (toLL[0] - fromLL[0]) * DEG;
+  const b = (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) / DEG + 360) % 360;
+  return ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'][Math.round(b / 45) % 8];
+}
+function answerFindCity(ll){
+  if (Q.answered || !Q.item) return;
+  const c = Q.item, km = gcKm(ll[0], ll[1], c.ll[0], c.ll[1]), pts = cityPoints(km), ok = pts >= 70;
+  Q.stats.pts = (Q.stats.pts || 0) + pts;
+  const tapV = ll2v(ll[0], ll[1]);
+  marks = [{v: tapV, cls: ok ? 'good' : 'bad', ring: true, text: '+' + pts}, {v: c.lv, cls: 'good', ring: true, text: c.n}];
+  if (km > 25) setMiss(ll, c.ll);
+  const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb ' + (ok ? 'good' : 'bad');
+  fb.innerHTML = `<b>${fmt(Math.round(km))} km</b> from ${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>. <b>+${pts}</b><span class="cap">${esc(cityKind(c))}${c.st ? ' · ' + esc(c.st) : ''}</span>`;
+  const mid = tapV.clone().add(c.lv).normalize(); const [lon, lat] = v2ll(mid.lengthSq() > 0.01 ? mid : c.lv);
+  flyTo(lat, lon, fit(clamp(tapV.angleTo(c.lv) * 1.9, S.set === 'world' ? 0.12 : 0.08, 2.6)));
+  $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
+  redrawOverlay(); finish(ok);
+}
+function answerNameCity(id, typed){
+  const c = Q.item, ok = id === c.id, other = id && !ok ? BYCITY.get(id) : null;
+  marks = [{v: c.lv, cls: 'good', ring: true, text: c.n}];
+  if (other) marks.push({v: other.lv, cls: 'bad', ring: true, text: other.n});
+  document.querySelectorAll('#q-choices .choice').forEach(b => { b.disabled = true; if (b.dataset.id === c.id) b.classList.add('good'); else if (b.dataset.id === id) b.classList.add('bad'); });
+  if (typed != null) $('#q-input').disabled = true;
+  const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb ' + (ok ? 'good' : 'bad');
+  const extra = !ok ? (other ? `Not ${esc(other.n)}. ` : typed ? `Not “${esc(typed)}”. ` : '') : '';
+  fb.innerHTML = (ok ? '<b>Correct.</b> ' : extra + 'It’s ') + `${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>` + `<span class="cap">${esc(cityKind(c))}${c.st ? ' · ' + esc(c.st) : ''}</span>`;
+  $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
+  redrawOverlay(); finish(ok);
+}
 // Dashed-looking miss line from the tap to the nearest edge of the answer
 function setMiss(a, b){
   const m = outlines.miss; if (!m) return;
@@ -1397,6 +1453,7 @@ function showBoth(a, b){
 }
 function answerName(id, typed){
   if (Q.answered || !Q.item) return;
+  if (Q.item.isCity) return answerNameCity(id, typed);
   const target = Q.item; const ok = id === target.id;
   fills = new Map([[target.id, hexA(ok ? '#4fd18b' : '#4fd18b', 0.45)]]);
   setOutline('target', null); setOutline('good', target.id);
@@ -1428,7 +1485,7 @@ $('#q-typed').addEventListener('submit', e => {
   const txt = $('#q-input').value.trim(); if (!txt) return;
   if (matches(Q.item, txt)) answerName(Q.item.id, txt);
   else {
-    const other = activeItems().find(o => o.id !== Q.item.id && matches(o, txt));
+    const other = (Q.item.isCity ? cityPool(true) : activeItems()).find(o => o.id !== Q.item.id && matches(o, txt));
     answerName(other ? other.id : null, txt);
   }
 });
@@ -1436,6 +1493,15 @@ $('#q-next').onclick = () => { clearTimeout(autoNext); newQuestion(); };
 $('#q-skip').onclick = () => {
   if (Q.answered || !Q.item) return;
   const t = Q.item;
+  if (t.isCity){
+    marks = [{v: t.lv, cls: 'good', ring: true, text: t.n}];
+    document.querySelectorAll('#q-choices .choice').forEach(b => { b.disabled = true; if (b.dataset.id === t.id) b.classList.add('good'); });
+    const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb bad';
+    fb.innerHTML = `${t.fl ? t.fl + ' ' : ''}<b>${esc(t.n)}</b> is marked in green.<span class="cap">${esc(cityKind(t))}${t.st ? ' · ' + esc(t.st) : ''}</span>`;
+    $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
+    if (S.mode === 'find') flyTo(t.ll[1], t.ll[0], fit(S.set === 'world' ? 0.3 : 0.15));
+    redrawOverlay(); finish(false); return;
+  }
   fills = new Map([[t.id, hexA('#4fd18b', 0.5)]]); setOutline('target', null); setOutline('good', t.id);
   marks = [{id: t.id, cls: 'good', ring: true, text: t.n}];
   document.querySelectorAll('#q-choices .choice').forEach(b => { b.disabled = true; if (b.dataset.id === t.id) b.classList.add('good'); });
@@ -1448,6 +1514,20 @@ $('#q-hintbtn').onclick = () => {
   if (Q.answered || !Q.item) return;
   const it = Q.item; Q.hinted = true;
   const parts = [];
+  if (it.isCity){
+    // Reference point: the country's (or state's) capital, or the nearest other big city
+    const same = cityPool(true).filter(o => o.id !== it.id);
+    let ref = same.find(o => o.cid === it.cid && o.cap === 1 && it.set === 'world') || (it.set !== 'world' && same.find(o => o.cap === 2 && o.st === it.st));
+    if (!ref || ref.id === it.id) ref = same.filter(o => o.pop > 1e6).sort((a, b) => a.lv.angleTo(it.lv) - b.lv.angleTo(it.lv))[0];
+    if (S.mode === 'find'){
+      if (it.st) parts.push(`In <b>${esc(it.st)}</b>.`);
+      if (ref) parts.push(`About ${fmt(Math.round(gcKm(ref.ll[0], ref.ll[1], it.ll[0], it.ll[1]) / 10) * 10)} km ${compass(ref.ll, it.ll)} of ${esc(ref.n)}.`);
+    } else {
+      parts.push(`In <b>${esc(it.set === 'world' ? it.cn : it.st || cityCountry(it))}</b>. Starts with <b>${esc(it.n[0])}</b>.`);
+    }
+    $('#q-hint').innerHTML = parts.join(' '); $('#q-hint').hidden = false; $('#q-hintbtn').disabled = true;
+    return;
+  }
   if (S.mode === 'find'){
     if (it.cap) parts.push(`Capital: <b>${esc(it.cap)}</b>.`);
     const nb = (it.nb || []).map(id => BYID.get(id)).filter(Boolean).map(n => esc(n.n));
@@ -1464,6 +1544,8 @@ $('#q-hintbtn').onclick = () => {
 $('#o-weak').checked = S.weak; $('#o-typing').checked = S.typing;
 $('#o-weak').onchange = e => { S.weak = e.target.checked; savePrefs(); if (!Q.answered) newQuestion(); };
 $('#o-typing').onchange = e => { S.typing = e.target.checked; savePrefs(); if (!Q.answered) newQuestion(); };
+$('#o-caps').checked = S.capsOnly;
+$('#o-caps').onchange = e => { S.capsOnly = e.target.checked; savePrefs(); renderChips(); updatePoolCount(); if (!Q.answered) newQuestion(); };
 
 /* ---------------- progress ---------------- */
 let confirmReset = false;
@@ -1474,16 +1556,17 @@ function barRow(label, list){
 }
 function renderProgress(){
   const el = $('#p-progress');
-  const pool = activeItems().filter(it => it.pool);
+  const pool = S.cities ? cityPool(true) : activeItems().filter(it => it.pool);
   const c = counts(pool);
   let rows = '';
   if (S.set === 'world') for (const [g, n] of Object.entries(GROUPS)) rows += barRow(n, pool.filter(it => it.g === g));
+  else if (S.cities){ rows += barRow(S.set === 'IND' ? 'Capitals' : 'Capitals', pool.filter(c => c.cap > 0)); rows += barRow('Other major cities', pool.filter(c => !c.cap)); }
   else { const kinds = [...new Set(pool.map(it => it.k))]; for (const k of kinds) rows += barRow(k.endsWith('y') ? k.slice(0, -1) + 'ies' : k + 's', pool.filter(it => it.k === k)); }
   const weak = pool.filter(it => { const s = status(it.id); return s === 'w' || s === 'l'; })
     .sort((a, b) => (rec(a.id)[0] - rec(b.id)[0]) || (rec(b.id)[2] - rec(a.id)[2])).slice(0, 10);
-  const other = ['world', 'IND', 'CHN'].filter(s => s !== S.set).map(s => { const cc = counts(BYSET[s].filter(it => it.pool)); return `<span>${{world: 'World', IND: 'India', CHN: 'China'}[s]} <b style="color:var(--ink);font-weight:500">${cc.m}/${cc.t}</b></span>`; }).join('');
+  const other = ['world', 'IND', 'CHN'].filter(s => s !== S.set).map(s => { const cc = counts(S.cities ? CITIES.filter(c => c.set === s) : BYSET[s].filter(it => it.pool)); return `<span>${{world: 'World', IND: 'India', CHN: 'China'}[s]} <b style="color:var(--ink);font-weight:500">${cc.m}/${cc.t}</b></span>`; }).join('');
   el.innerHTML = `
-    <div class="eyebrow"><span>${esc(SET_NOUNS[S.set])} · ${S.blind ? 'no borders' : 'borders on'}</span><span id="save-where"></span></div>
+    <div class="eyebrow"><span>${S.cities ? {world: 'World cities', IND: 'Cities of India', CHN: 'Cities of China'}[S.set] : esc(SET_NOUNS[S.set]) + ' · ' + (S.blind ? 'no borders' : 'borders on')}</span><span id="save-where"></span></div>
     <div class="big-stats">
       <div class="stat m"><b>${c.m}</b><span>Mastered</span></div>
       <div class="stat l"><b>${c.l}</b><span>Learning</span></div>
@@ -1492,11 +1575,11 @@ function renderProgress(){
     <div class="legend"><span><i class="dot" style="background:var(--good)"></i>Mastered (3+ right in a row)</span><span><i class="dot" style="background:var(--learn)"></i>Learning</span><span><i class="dot" style="background:var(--bad)"></i>Missed last time</span></div>
     <div class="bars">${rows}</div>
     <div class="eyebrow"><span>Needs work</span></div>
-    ${weak.length ? `<div class="weak">${weak.map(it => { const r = rec(it.id); return `<button data-id="${it.id}"><i class="dot" style="background:${MASTERY_COL[status(it.id)]}"></i><span>${it.fl ? it.fl + ' ' : ''}${esc(it.n)}</span><span class="mono">${r[1]}✓ ${r[2]}✗</span></button>`; }).join('')}</div>` : `<p class="empty">Nothing flagged yet. Take a quiz and the places you miss will show up here.</p>`}
+    ${weak.length ? `<div class="weak">${weak.map(it => { const r = rec(it.id); return `<button data-id="${it.id}"><i class="dot" style="background:${MASTERY_COL[status(it.id)]}"></i><span>${it.fl ? it.fl + ' ' : ''}${esc(it.isCity ? cityLabel(it) : it.n)}</span><span class="mono">${r[1]}✓ ${r[2]}✗</span></button>`; }).join('')}</div>` : `<p class="empty">Nothing flagged yet. Take a quiz and the places you miss will show up here.</p>`}
     <div class="row">
       <button class="btn primary" id="pr-drill" ${weak.length ? '' : 'disabled'}>Drill weak spots</button>
       <span class="grow"></span>
-      ${confirmReset ? `<button class="btn danger" id="pr-reset-yes">Erase ${esc(SET_NOUNS[S.set])} progress</button><button class="btn ghost" id="pr-reset-no">Cancel</button>` : `<button class="btn ghost" id="pr-reset">Reset…</button>`}
+      ${confirmReset ? `<button class="btn danger" id="pr-reset-yes">Erase ${S.cities ? 'these cities\u2019' : esc(SET_NOUNS[S.set])} progress</button><button class="btn ghost" id="pr-reset-no">Cancel</button>` : `<button class="btn ghost" id="pr-reset">Reset…</button>`}
     </div>
     <div class="legend">${other}</div>
     <div id="sync-box" class="sync"></div>`;
@@ -1505,6 +1588,7 @@ function renderProgress(){
 }
 $('#p-progress').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.id && b.dataset.id.startsWith('c:')){ const c = BYCITY.get(b.dataset.id); enterMode('explore'); marks = [{v: c.lv, cls: 'good', ring: true, text: c.n}]; flyTo(c.ll[1], c.ll[0], fit(0.12)); return; }
   if (b.dataset.id){ enterMode('explore'); selectItem(b.dataset.id, true); return; }
   if (b.id === 'pr-drill'){ S.weak = true; $('#o-weak').checked = true; savePrefs(); enterMode('find'); return; }
   if (b.id === 'gh-sync'){ ghSync(); return; }
@@ -1512,8 +1596,8 @@ $('#p-progress').addEventListener('click', e => {
   if (b.id === 'pr-reset'){ confirmReset = true; renderProgress(); return; }
   if (b.id === 'pr-reset-no'){ confirmReset = false; renderProgress(); return; }
   if (b.id === 'pr-reset-yes'){
-    for (const it of activeItems()) delete P.data[lk(it.id)];
-    P.updated = Date.now(); P.resets[S.set + (S.blind ? ':b' : '')] = Date.now(); saveLocal(); scheduleSync();
+    for (const it of (S.cities ? cityPool(true) : activeItems())) delete P.data[lk(it.id)];
+    P.updated = Date.now(); P.resets[S.set + (S.cities ? ':c' : S.blind ? ':b' : '')] = Date.now(); saveLocal(); scheduleSync();
     confirmReset = false; renderProgress(); redrawOverlay();
   }
 });
@@ -1560,7 +1644,9 @@ function loop(now){
 async function boot(){
   resize(); addEventListener('resize', resize);
   const v = SET_VIEW[S.set]; view.lat = v[0]; view.lon = v[1]; view.alt = fit(v[2]); applyView();
-  const geo = await fetch('geo.json').then(r => r.json());
+  const [geo, cityData] = await Promise.all([fetch('geo.json').then(r => r.json()), fetch('cities.json').then(r => r.json()).catch(() => ({cities: []}))]);
+  CITIES = cityData.cities;
+  for (const c of CITIES){ c.lv = ll2v(c.ll[0], c.ll[1]); c.lab = c.ll; c.isCity = true; BYCITY.set(c.id, c); }
   for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) ensureTile(1, x, y);
   ensureTile(0, 0, 0);
   ITEMS = geo.items;
