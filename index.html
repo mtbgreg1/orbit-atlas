@@ -1238,7 +1238,7 @@ const cityCountry = c => c.set === 'world' ? c.cn : (c.set === 'IND' ? 'India' :
 const cityPlace = c => [c.st, cityCountry(c) === c.n ? '' : cityCountry(c)].filter(Boolean).join(', ');
 // "Victoria, British Columbia, Canada"
 const cityLabel = c => [c.n, cityPlace(c)].filter(Boolean).join(', ');
-function capKind(c){ return c.cap === 1 ? 'National capital' : c.cap === 2 ? (c.set === 'IND' ? 'State or UT capital' : 'Provincial capital') : ''; }
+function capKind(c){ return c.ck ? c.ck : c.cap === 1 ? 'National capital' : c.cap === 2 ? (c.set === 'IND' ? 'State or UT capital' : 'Provincial capital') : ''; }
 function cityKind(c){ return [cityPlace(c), capKind(c)].filter(Boolean).join(' · '); }
 function subFor(it){
   if (it.isCity) return cityKind(it);
