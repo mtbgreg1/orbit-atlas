@@ -1,0 +1,1486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="A satellite globe for learning where the world's countries, India's states and China's provinces are.">
+<meta name="theme-color" content="#04070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orbit Atlas">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230a1d38'/%3E%3Cpath d='M20 18c6 2 8 8 4 12s2 10 8 8 6 8 2 12' fill='none' stroke='%234fd18b' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%23f2b134' stroke-width='4'/%3E%3C/svg%3E">
+<title>Orbit Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  --space:#04070d;
+  --panel:rgba(12,18,28,.86);
+  --panel-solid:#0c121c;
+  --line:rgba(170,190,215,.16);
+  --line-strong:rgba(170,190,215,.32);
+  --ink:#e9eef4;
+  --muted:#93a1b3;
+  --faint:#5f6d80;
+  --accent:#f2b134;
+  --accent-ink:#1b1204;
+  --good:#4fd18b;
+  --bad:#ff6b5e;
+  --learn:#f2b134;
+  --chip:rgba(255,255,255,.06);
+  --chip-on:rgba(242,177,52,.16);
+  --display:"Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+html,body{height:100%}
+body{background:var(--space);color:var(--ink);font-family:var(--sans);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
+#app{position:fixed;inset:0;overflow:hidden}
+#globe{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#globe.dragging{cursor:grabbing}
+#globe.pointing{cursor:crosshair}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;white-space:nowrap;font:500 11px/1 var(--sans);color:#fff;letter-spacing:.02em;
+  text-shadow:0 0 3px rgba(0,0,0,.95),0 1px 2px rgba(0,0,0,.9);will-change:transform;transform-origin:0 0}
+.lbl.big{font:600 12.5px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase}
+.lbl.terr{color:#cfd7e2;font-style:italic;font-weight:400}
+.mark{position:absolute;left:0;top:0;pointer-events:none}
+.mark .ring{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;border:2px solid var(--accent);box-shadow:0 0 0 2px rgba(0,0,0,.45);animation:pulse 1.6s ease-out infinite}
+.mark.good .ring{border-color:var(--good)} .mark.bad .ring{border-color:var(--bad)}
+.mark .tag{position:absolute;left:14px;top:-26px;background:var(--panel-solid);border:1px solid var(--line-strong);padding:4px 8px;border-radius:6px;font:600 12px/1.2 var(--sans);white-space:nowrap}
+.mark.good .tag{border-color:var(--good);color:var(--good)} .mark.bad .tag{border-color:var(--bad);color:var(--bad)}
+@keyframes pulse{0%{transform:scale(.7);opacity:1}100%{transform:scale(1.35);opacity:.35}}
+@media (prefers-reduced-motion: reduce){.mark .ring{animation:none}}
+#tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--panel-solid);border:1px solid var(--line-strong);border-radius:6px;padding:5px 9px;font:500 12.5px/1.2 var(--sans);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+#tip small{color:var(--muted);font-weight:400;margin-left:6px}
+
+/* chrome */
+.bar{position:absolute;display:flex;gap:10px;align-items:center}
+#top{top:calc(12px + env(safe-area-inset-top,0px));left:16px;right:16px;flex-wrap:wrap;pointer-events:none}
+#top > *{pointer-events:auto}
+.brand{display:flex;align-items:baseline;gap:8px;font:600 22px/1 var(--display);letter-spacing:.01em;margin-right:6px;text-shadow:0 0 4px #000,0 1px 8px rgba(0,0,0,.8)}
+.brand em{font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#c3ccd8;font-style:normal;text-shadow:0 0 3px #000,0 0 6px #000}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.seg button{all:unset;cursor:pointer;padding:7px 12px;border-radius:7px;font:500 13px/1 var(--sans);color:var(--muted);white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.seg button:focus-visible,.btn:focus-visible,.chip:focus-visible,.tog:focus-visible,.choice:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#layers{margin-left:auto;display:flex;gap:6px}
+.tog{all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font:500 12.5px/1 var(--sans);color:var(--muted);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.tog i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--faint)}
+.tog[aria-pressed="true"]{color:var(--ink);border-color:var(--line-strong)}
+.tog[aria-pressed="true"] i{background:var(--accent);border-color:var(--accent)}
+.tog:disabled{opacity:.4;cursor:not-allowed}
+
+#panel{position:absolute;left:16px;top:calc(68px + env(safe-area-inset-top,0px));width:340px;max-height:calc(100% - 140px - env(safe-area-inset-top,0px));overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.sec{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.sec + .sec{border-top:1px solid var(--line)}
+.eyebrow{font:500 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+select,input[type=text],input[type=password]{font:500 14px/1.2 var(--sans);color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line-strong);border-radius:8px;padding:9px 10px;width:100%;box-sizing:border-box}
+select:focus-visible,input[type=text]:focus-visible,input[type=password]:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+select option{background:var(--panel-solid)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;padding:5px 9px;border-radius:999px;background:var(--chip);border:1px solid var(--line);font:500 12px/1.1 var(--sans);color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--chip-on);border-color:rgba(242,177,52,.55);color:var(--ink)}
+.chip .n{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-left:4px}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:9px;background:rgba(255,255,255,.07);border:1px solid var(--line-strong);font:500 13px/1 var(--sans);color:var(--ink);text-align:center}
+.btn:hover{background:rgba(255,255,255,.12)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted);padding-inline:8px}
+.btn.danger{color:var(--bad);border-color:rgba(255,107,94,.4)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row .grow{flex:1}
+kbd{font:500 10px/1 var(--mono);padding:2px 4px;border:1px solid var(--line-strong);border-radius:4px;color:var(--muted)}
+
+/* quiz */
+.prompt{display:flex;align-items:center;gap:12px;min-height:44px}
+.flag{font-size:34px;line-height:1}
+.prompt h2{margin:0;font:600 32px/1.02 var(--display);text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;margin-top:-4px}
+.hint{font-size:13px;line-height:1.45;color:#d7dee8;background:rgba(242,177,52,.08);border:1px dashed rgba(242,177,52,.4);border-radius:8px;padding:8px 10px}
+.fb{font-size:14px;line-height:1.4;border-radius:9px;padding:10px 12px;border:1px solid}
+.fb b{font-weight:600}
+.fb.good{border-color:rgba(79,209,139,.5);background:rgba(79,209,139,.1)}
+.fb.bad{border-color:rgba(255,107,94,.5);background:rgba(255,107,94,.1)}
+.fb .cap{display:block;color:var(--muted);font-size:12.5px;margin-top:3px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.choice{all:unset;cursor:pointer;box-sizing:border-box;padding:11px 10px;border-radius:9px;border:1px solid var(--line-strong);background:rgba(255,255,255,.05);font:500 13.5px/1.25 var(--sans);display:flex;gap:8px;align-items:flex-start;min-height:44px}
+.choice:hover:not(:disabled){background:rgba(255,255,255,.1)}
+.choice kbd{margin-top:1px}
+.choice.good{border-color:var(--good);background:rgba(79,209,139,.16)}
+.choice.bad{border-color:var(--bad);background:rgba(255,107,94,.16)}
+.choice:disabled{cursor:default}
+.score{display:flex;gap:14px;font:500 12px/1 var(--mono);color:var(--muted)}
+.score b{color:var(--ink);font-weight:500}
+.opt{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none}
+.opt input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+
+/* explore */
+.info-head{display:flex;gap:12px;align-items:center}
+.info-head .flag{font-size:40px}
+.info-head h2{margin:0;font:600 30px/1.02 var(--display);text-wrap:balance}
+.kv{display:grid;grid-template-columns:92px 1fr;gap:7px 10px;margin:0;font-size:13px}
+.kv dt{color:var(--muted);font:500 10.5px/1.6 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.kv dd{margin:0;line-height:1.45}
+.kv .mono{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.linkish{all:unset;cursor:pointer;color:var(--ink);border-bottom:1px dotted var(--faint)}
+.linkish:hover{color:var(--accent);border-color:var(--accent)}
+.status{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted)}
+.status i{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.status.m{color:var(--good);border-color:rgba(79,209,139,.5)} .status.m i{background:var(--good)}
+.status.l{color:var(--learn);border-color:rgba(242,177,52,.5)} .status.l i{background:var(--learn)}
+.status.w{color:var(--bad);border-color:rgba(255,107,94,.5)} .status.w i{background:var(--bad)}
+.empty{color:var(--muted);font-size:13px;line-height:1.5}
+.results{display:flex;flex-direction:column;max-height:220px;overflow:auto;margin-top:-4px;border:1px solid var(--line);border-radius:8px}
+.results button{all:unset;cursor:pointer;padding:8px 10px;font-size:13.5px;display:flex;gap:8px;align-items:center}
+.results button:hover,.results button.on{background:rgba(255,255,255,.08)}
+.results small{color:var(--muted);margin-left:auto;font-size:11.5px}
+
+/* progress */
+.big-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:10px}
+.stat b{display:block;font:600 26px/1 var(--display);font-variant-numeric:lining-nums tabular-nums}
+.stat span{font:500 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat.m b{color:var(--good)} .stat.l b{color:var(--learn)}
+.bars{display:flex;flex-direction:column;gap:9px}
+.barrow{display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:12.5px}
+.barrow .num{font:500 11px/1.4 var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.track{grid-column:1/-1;height:6px;border-radius:3px;background:rgba(255,255,255,.07);display:flex;overflow:hidden}
+.track i{display:block;height:100%}
+.track .m{background:var(--good)} .track .l{background:var(--learn)}
+.weak{display:flex;flex-direction:column;gap:2px}
+.weak button{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 6px;border-radius:6px;font-size:13px}
+.weak button:hover{background:rgba(255,255,255,.07)}
+.weak .mono{font:500 11px/1 var(--mono);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.note{font-size:12px;color:var(--faint);line-height:1.5;margin:0}
+.note a,.steps a{color:var(--accent)}
+.steps{margin:0;padding-left:18px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.sync{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:12px}
+
+#hud{left:16px;bottom:calc(12px + env(safe-area-inset-bottom,0px));font:500 11px/1.5 var(--mono);color:var(--muted);flex-direction:column;align-items:flex-start;gap:2px;pointer-events:none;text-shadow:0 1px 3px #000}
+#coords{color:#dde4ec;text-shadow:0 0 3px #000,0 1px 2px #000;font-variant-numeric:tabular-nums}
+#attrib{font-size:10px;color:#b9c3d0;text-shadow:0 0 3px #000,0 1px 2px #000,0 0 6px rgba(0,0,0,.8);pointer-events:auto;max-width:min(720px,70vw)}
+#attrib a{color:inherit}
+textarea{font:400 12px/1.4 var(--mono);color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line-strong);border-radius:8px;padding:8px;width:100%;box-sizing:border-box;min-height:70px;resize:vertical;word-break:break-all}
+#zoom{right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));flex-direction:column;gap:6px}
+#zoom .btn{width:40px;height:40px;padding:0;background:var(--panel);font-size:18px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#zoom .btn svg{width:18px;height:18px}
+#loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:500 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+@media (max-width: 760px){
+  .brand{font-size:19px}
+  .brand em{display:none}
+}
+@media (max-width: 520px){
+  .brand{display:none}
+  #top{gap:8px}
+  #layers{margin-left:0;width:100%;order:3}
+  .tog{padding:6px 9px;font-size:12px}
+  .seg button{padding:7px 9px;font-size:12.5px}
+  #panel{left:8px;right:8px;width:auto;top:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));max-height:46%;border-radius:14px;display:flex;flex-direction:column}
+  #setbar{order:2;border-top:1px solid var(--line)}
+  #panel .sec + .sec{border-top:0}
+  .chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .chip{white-space:nowrap;flex:none}
+  .sec{padding:12px 14px}
+  .prompt h2{font-size:26px}
+  #hud{display:none}
+  #zoom{bottom:auto;top:calc(116px + env(safe-area-inset-top,0px));right:12px}
+  #zoom .btn{width:36px;height:36px}
+}
+</style>
+<style>[hidden]{display:none!important} body{margin:0} :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="globe" aria-label="Interactive satellite globe. Drag to rotate, scroll or pinch to zoom."></canvas>
+  <div id="labels"></div>
+  <div id="tip" hidden></div>
+  <div id="loading">Loading satellite imagery…</div>
+
+  <header id="top" class="bar">
+    <div class="brand">Orbit Atlas <em>geography trainer</em></div>
+    <nav class="seg" id="modes" role="tablist" aria-label="Mode">
+      <button role="tab" data-mode="explore" aria-selected="true">Explore</button>
+      <button role="tab" data-mode="find" aria-selected="false">Find it</button>
+      <button role="tab" data-mode="name" aria-selected="false">Name it</button>
+      <button role="tab" data-mode="progress" aria-selected="false">Progress</button>
+    </nav>
+    <div id="layers">
+      <button class="tog" id="t-borders" aria-pressed="true"><i></i>Borders</button>
+      <button class="tog" id="t-labels" aria-pressed="true"><i></i>Labels</button>
+      <button class="tog" id="t-mastery" aria-pressed="false"><i></i>Mastery</button>
+      <button class="tog" id="t-esri" aria-pressed="false" title="Switch close-up imagery between Sentinel-2 and Esri"><i></i>Esri imagery</button>
+    </div>
+  </header>
+
+  <aside id="panel">
+    <section class="sec" id="setbar">
+      <div class="eyebrow"><span>Study set</span><span id="pool-count"></span></div>
+      <select id="set" aria-label="Study set">
+        <option value="world">World countries</option>
+        <option value="IND">India: states &amp; union territories</option>
+        <option value="CHN">China: provinces &amp; regions</option>
+      </select>
+      <div class="chips" id="chips" role="group" aria-label="Regions"></div>
+    </section>
+
+    <section class="sec" id="p-explore">
+      <input type="text" id="search" placeholder="Search a place…" autocomplete="off" aria-label="Search">
+      <div class="results" id="results" hidden></div>
+      <div id="info"></div>
+    </section>
+
+    <section class="sec" id="p-quiz" hidden>
+      <div class="eyebrow"><span id="q-eyebrow">Find it on the globe</span><span id="q-left"></span></div>
+      <div class="prompt" id="q-prompt"><span class="flag" id="q-flag"></span><h2 id="q-name"></h2></div>
+      <div class="sub" id="q-sub"></div>
+      <div class="choices" id="q-choices" hidden></div>
+      <form id="q-typed" class="row" hidden autocomplete="off">
+        <input type="text" id="q-input" class="grow" placeholder="Type the name…" aria-label="Your answer" spellcheck="false">
+        <button class="btn primary" type="submit">Check</button>
+      </form>
+      <div class="hint" id="q-hint" hidden></div>
+      <div class="fb" id="q-fb" hidden></div>
+      <div class="row">
+        <button class="btn" id="q-hintbtn">Hint</button>
+        <button class="btn" id="q-skip">Show me</button>
+        <span class="grow"></span>
+        <button class="btn primary" id="q-next" hidden>Next <kbd>↵</kbd></button>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div class="score"><span>Score <b id="q-score">0/0</b></span><span>Streak <b id="q-streak">0</b></span></div>
+      </div>
+      <div class="row" style="gap:16px">
+        <label class="opt"><input type="checkbox" id="o-weak"> Focus on weak spots</label>
+        <label class="opt" id="o-typing-wrap" hidden><input type="checkbox" id="o-typing"> Type answers</label>
+      </div>
+    </section>
+
+    <section class="sec" id="p-progress" hidden></section>
+  </aside>
+
+  <div id="hud" class="bar"><span id="coords">—</span><span id="attrib"></span></div>
+  <div id="zoom" class="bar">
+    <button class="btn" id="z-in" aria-label="Zoom in">+</button>
+    <button class="btn" id="z-out" aria-label="Zoom out">−</button>
+    <button class="btn" id="z-home" aria-label="Reset view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.3 3.8 5.2 3.8 8.5s-1.2 6.2-3.8 8.5c-2.6-2.3-3.8-5.2-3.8-8.5s1.2-6.2 3.8-8.5z"/></svg></button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const DEG = Math.PI / 180;
+const MIN_ALT = 0.0012, MAX_ALT = 4.2;
+const GROUPS = {africa:'Africa', europe:'Europe', mideast:'Middle East & Caucasus', scasia:'South & Central Asia', easia:'East & Southeast Asia', oceania:'Oceania', namerica:'North America', carib:'Central America & Caribbean', samerica:'South America'};
+const GROUP_VIEW = {africa:[3,20,1.9], europe:[52,14,1.15], mideast:[31,45,1.15], scasia:[32,70,1.35], easia:[22,115,1.7], oceania:[-14,155,2.1], namerica:[45,-100,1.8], carib:[16,-78,0.95], samerica:[-18,-60,1.8]};
+const SET_VIEW = {world:[20,15,2.4], IND:[22.5,81,0.62], CHN:[34,104,0.95]};
+const SET_NOUN = {world:'country', IND:'state or UT', CHN:'province or region'};
+const SET_NOUNS = {world:'countries', IND:'states & UTs', CHN:'provinces & regions'};
+
+/* ---------------- storage helpers ---------------- */
+const ls = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------------- state ---------------- */
+const prefs = ls.get('oa-prefs', {});
+const S = {
+  mode: 'explore', set: prefs.set || 'world',
+  groups: new Set(prefs.groups && prefs.groups.length ? prefs.groups : Object.keys(GROUPS)),
+  borders: prefs.borders !== false, labels: prefs.labels !== false, mastery: !!prefs.mastery,
+  weak: !!prefs.weak, typing: !!prefs.typing, src: prefs.src === 'esri' ? 'esri' : 'sentinel',
+};
+function savePrefs(){ ls.set('oa-prefs', {src:S.src, set:S.set, groups:[...S.groups], borders:S.borders, labels:S.labels, mastery:S.mastery, weak:S.weak, typing:S.typing}); }
+
+/* ---------------- math ---------------- */
+function ll2v(lon, lat, r = 1, out){
+  const cl = Math.cos(lat * DEG);
+  out = out || new THREE.Vector3();
+  return out.set(r * cl * Math.sin(lon * DEG), r * Math.sin(lat * DEG), r * cl * Math.cos(lon * DEG));
+}
+function v2ll(v){ const r = v.length(); return [Math.atan2(v.x, v.z) / DEG, Math.asin(Math.max(-1, Math.min(1, v.y / r))) / DEG]; }
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const mercLat = (t) => Math.atan(Math.sinh(Math.PI * (1 - 2 * t))) / DEG; // t in [0,1] from north
+
+/* ---------------- three setup ---------------- */
+const canvas = $('#globe');
+const renderer = new THREE.WebGLRenderer({canvas, antialias: true, powerPreference: 'high-performance'});
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(DPR);
+renderer.setClearColor(0x04070d, 1);
+const scene = new THREE.Scene();
+const FOV = 40;
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.01, 80);
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+let W = 1, H = 1;
+function resize(){
+  W = canvas.clientWidth || innerWidth; H = canvas.clientHeight || innerHeight;
+  renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); dirty = true;
+}
+
+// stars
+{
+  const n = 1800, pos = new Float32Array(n * 3), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++){ v.randomDirection().multiplyScalar(60); pos.set([v.x, v.y, v.z], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({color: 0x9fb2cc, size: 1.3, sizeAttenuation: false, transparent: true, opacity: .7})));
+}
+// atmosphere glow
+{
+  const g = new THREE.SphereGeometry(1.06, 96, 64);
+  const m = new THREE.ShaderMaterial({
+    side: THREE.BackSide, transparent: true, depthWrite: false,
+    vertexShader: 'varying vec3 vN; varying vec3 vP; void main(){ vN = normalize(normalMatrix*normal); vec4 p = modelViewMatrix*vec4(position,1.0); vP = p.xyz; gl_Position = projectionMatrix*p; }',
+    fragmentShader: 'varying vec3 vN; varying vec3 vP; void main(){ float f = dot(normalize(-vP), vN); float a = pow(clamp(1.0 + f*1.9, 0.0, 1.0), 3.0); gl_FragColor = vec4(0.35,0.62,1.0, a*0.55); }'
+  });
+  scene.add(new THREE.Mesh(g, m));
+}
+// base sphere (ocean fallback + occluder)
+const base = new THREE.Mesh(new THREE.SphereGeometry(0.996, 128, 96), new THREE.MeshBasicMaterial({color: 0x0a1d38}));
+scene.add(base);
+
+function gridGeom(lon0, lon1, lat0, lat1, sx, sy, r, uvFn){
+  // lat0 = north edge, lat1 = south edge
+  const pos = [], uv = [], idx = [], v = new THREE.Vector3();
+  for (let j = 0; j <= sy; j++){
+    const t = j / sy;
+    const lat = uvFn && uvFn.merc ? mercLat(uvFn.y0 + t * uvFn.dy) : lat0 + (lat1 - lat0) * t;
+    for (let i = 0; i <= sx; i++){
+      const lon = lon0 + (lon1 - lon0) * i / sx;
+      ll2v(lon, lat, r, v); pos.push(v.x, v.y, v.z);
+      if (uvFn && uvFn.equi) uv.push((lon + 180) / 360, (lat + 90) / 180); else uv.push(i / sx, t);
+    }
+  }
+  for (let j = 0; j < sy; j++) for (let i = 0; i < sx; i++){
+    const a = j * (sx + 1) + i, b = a + 1, c = a + sx + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/* ---------------- satellite tiles ---------------- */
+const tileGroup = new THREE.Group(); scene.add(tileGroup);
+const SOURCES = {
+  sentinel: {maxZ: 14, url: (z, x, y) => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/${z}/${y}/${x}.jpg`,
+    credit: 'Imagery NASA Blue Marble · <a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless 2024</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024) · Boundaries Natural Earth (de facto)'},
+  esri: {maxZ: 16, url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
+    credit: 'Imagery NASA Blue Marble · Esri, Maxar, Earthstar Geographics, and the GIS User Community · Boundaries Natural Earth (de facto)'},
+};
+const BLUE_MARBLE = (z, x, y) => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/${z}/${y}/${x}.jpeg`;
+const SWITCH_Z = 8; // Blue Marble below this zoom, sharper imagery at and above
+function srcFor(z){ return z < SWITCH_Z ? 'bm' : S.src; }
+function tkey(z, x, y){ return srcFor(z) + '/' + z + '/' + x + '/' + y; }
+function tileURL(t){ return t.src === 'bm' ? BLUE_MARBLE(t.z, t.x, t.y) : SOURCES[t.src].url(t.z, t.x, t.y); }
+function maxZ(){ return SOURCES[S.src].maxZ; }
+const tiles = new Map(); // key -> {state, mesh, used}
+const tileInfoCache = new Map();
+const TILE_SEG = [72, 40, 24, 14, 10, 8, 8, 8, 6, 6, 4, 4, 4, 4, 4, 4, 4];
+function tileInfo(z, x, y){
+  const k = z + '/' + x + '/' + y; let t = tileInfoCache.get(k); if (t) return t;
+  const n = 1 << z;
+  const lon0 = x / n * 360 - 180, lon1 = (x + 1) / n * 360 - 180;
+  const latN = mercLat(y / n), latS = mercLat((y + 1) / n);
+  const c = ll2v((lon0 + lon1) / 2, mercLat((y + 0.5) / n));
+  let ang = 0; const v = new THREE.Vector3();
+  for (const [lo, la] of [[lon0, latN], [lon1, latN], [lon0, latS], [lon1, latS], [(lon0 + lon1) / 2, latN], [(lon0 + lon1) / 2, latS]]){
+    ang = Math.max(ang, c.angleTo(ll2v(lo, la, 1, v)));
+  }
+  t = {c, ang, lon0, lon1};
+  if (tileInfoCache.size > 20000) tileInfoCache.clear();
+  tileInfoCache.set(k, t); return t;
+}
+const queue = []; let active = 0, selGen = 0;
+const MAX_ACTIVE = 10;
+function pending(){ return active > 0 || queue.length > 0; }
+function ensureTile(z, x, y){
+  const k = tkey(z, x, y); let t = tiles.get(k);
+  if (t){
+    if (t.state === 'queued') t.want = selGen;
+    if (t.state === 'missing' && performance.now() - t.failAt > 20000){ tiles.delete(k); return ensureTile(z, x, y); }
+    return t;
+  }
+  t = {state: 'queued', mesh: null, used: 0, z, x, y, src: srcFor(z), key: k, want: selGen};
+  tiles.set(k, t); queue.push(t); pump();
+  return t;
+}
+function pump(){
+  if (!queue.length) return;
+  queue.sort((a, b) => (b.want - a.want) || (a.z - b.z));
+  while (active < MAX_ACTIVE && queue.length){
+    const t = queue.shift();
+    if (selGen - t.want > 2){ tiles.delete(t.key); continue; } // no longer on screen
+    active++; t.state = 'loading';
+    loadTile(t).finally(() => { active--; dirty = true; pump(); });
+  }
+}
+async function loadTile(t){
+  try {
+    const r = await fetch(tileURL(t), {mode: 'cors'});
+    if (!r.ok) throw new Error(r.status);
+    const blob = await r.blob();
+    let img;
+    try { img = await createImageBitmap(blob); }
+    catch (err){ img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(blob); }); }
+    if (tiles.get(t.key) !== t){ if (img.close) img.close(); return; }
+    const tex = new THREE.Texture(img);
+    tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = Math.min(8, maxAniso);
+    tex.minFilter = THREE.LinearMipmapLinearFilter; tex.needsUpdate = true;
+    const z = t.z, n = 1 << z, seg = TILE_SEG[z] || 4;
+    const geom = gridGeom(t.x / n * 360 - 180, (t.x + 1) / n * 360 - 180, 0, 0, seg, seg, 1, {merc: true, y0: t.y / n, dy: 1 / n});
+    t.mesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({map: tex}));
+    t.mesh.visible = false; t.mesh.userData.img = img;
+    tileGroup.add(t.mesh);
+    t.state = 'ready';
+    if (z === 0) samplePoles(img);
+  } catch (e){ t.state = 'missing'; t.failAt = performance.now(); }
+}
+// polar caps colored from the imagery edges
+const capN = new THREE.Mesh(gridGeom(-180, 180, 90, 85.0511, 96, 4, 0.9995), new THREE.MeshBasicMaterial({color: 0xdfe6ee}));
+const capS = new THREE.Mesh(gridGeom(-180, 180, -85.0511, -90, 96, 4, 0.9995), new THREE.MeshBasicMaterial({color: 0xeef2f6}));
+scene.add(capN, capS);
+function samplePoles(img){
+  try {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, 64, 64);
+    const avg = (row) => { const d = x.getImageData(0, row, 64, 1).data; let r = 0, g = 0, b = 0; for (let i = 0; i < d.length; i += 4){ r += d[i]; g += d[i + 1]; b += d[i + 2]; } return new THREE.Color(`rgb(${r / 64 | 0},${g / 64 | 0},${b / 64 | 0})`); };
+    capN.material.color = avg(0); capS.material.color = avg(63);
+  } catch (e) {}
+}
+
+const camDir = new THREE.Vector3();
+let viewAngle = 1, pxScale = 1;
+function visibleTile(info){ return info.c.angleTo(camDir) < viewAngle + info.ang; }
+function wantSplit(info){
+  const d = camera.position.distanceTo(info.c);
+  const px = (info.ang * 1.414) / d * pxScale * DPR;
+  return px > 300;
+}
+function selectTiles(){
+  const out = [];
+  const visit = (z, x, y) => {
+    const info = tileInfo(z, x, y);
+    if (z > 0 && !visibleTile(info)) return;
+    const t = tiles.get(tkey(z, x, y));
+    if (z < maxZ() && wantSplit(info)){
+      const kids = [];
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++){
+        const cz = z + 1, cx = x * 2 + dx, cy = y * 2 + dy;
+        if (!visibleTile(tileInfo(cz, cx, cy))) continue;
+        kids.push([cz, cx, cy, ensureTile(cz, cx, cy)]);
+      }
+      if (kids.length && kids.every(k => k[3].state === 'ready' || k[3].state === 'missing') && kids.some(k => k[3].state === 'ready')){
+        const missing = kids.some(k => k[3].state === 'missing');
+        if (!missing){ kids.forEach(k => visit(k[0], k[1], k[2])); return; }
+      }
+    }
+    if (t && t.state === 'ready') out.push(t);
+  };
+  visit(0, 0, 0);
+  return out;
+}
+let frame = 0;
+function updateTiles(){
+  selGen++;
+  const sel = selectTiles();
+  for (const t of tiles.values()) if (t.mesh) t.mesh.visible = false;
+  for (const t of sel){ t.mesh.visible = true; t.used = frame; }
+  // evict
+  if (tiles.size > 700){
+    const cands = [...tiles.entries()].filter(([k, t]) => t.state === 'ready' && (t.z > 3 || t.src !== 'bm') && t.used < frame - 30).sort((a, b) => a[1].used - b[1].used);
+    for (const [k, t] of cands.slice(0, tiles.size - 600)){
+      tileGroup.remove(t.mesh); t.mesh.geometry.dispose(); t.mesh.material.map.dispose(); t.mesh.material.dispose();
+      if (t.mesh.userData.img && t.mesh.userData.img.close) t.mesh.userData.img.close();
+      tiles.delete(k);
+    }
+  }
+}
+
+/* ---------------- borders (ribbon lines) ---------------- */
+const LINE_VS = `
+attribute vec3 aDir; attribute float aSide;
+uniform float uWidth; uniform float uLift;
+void main(){
+  vec3 n = normalize(position);
+  vec3 off = normalize(cross(n, aDir));
+  vec3 p = (position + off * aSide * uWidth) * uLift;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}`;
+const LINE_FS = `uniform vec3 uColor; uniform float uOpacity; void main(){ gl_FragColor = vec4(uColor, uOpacity); }`;
+const lineMats = [];
+function lineMat(color, opacity, px, lift){
+  const m = new THREE.ShaderMaterial({
+    uniforms: {uColor: {value: new THREE.Color(color)}, uOpacity: {value: opacity}, uWidth: {value: 0.001}, uLift: {value: lift || 1.0006}},
+    vertexShader: LINE_VS, fragmentShader: LINE_FS, transparent: true, depthWrite: false
+  });
+  m.userData.px = px; lineMats.push(m); return m;
+}
+function buildLines(itemsOrRings){
+  const P = [], D = [], Sd = [], I = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), d = new THREE.Vector3();
+  let vi = 0;
+  const pushSeg = (lo1, la1, lo2, la2) => {
+    ll2v(lo1, la1, 1, a); ll2v(lo2, la2, 1, b); d.subVectors(b, a);
+    if (d.lengthSq() < 1e-14) return;
+    P.push(a.x, a.y, a.z, a.x, a.y, a.z, b.x, b.y, b.z, b.x, b.y, b.z);
+    for (let k = 0; k < 4; k++) D.push(d.x, d.y, d.z);
+    Sd.push(1, -1, 1, -1);
+    I.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2); vi += 4;
+  };
+  for (const ring of itemsOrRings){
+    for (let i = 0; i + 3 < ring.length; i += 2){
+      const lo1 = ring[i], la1 = ring[i + 1], lo2 = ring[i + 2], la2 = ring[i + 3];
+      if (Math.abs(lo1) > 179.9 && Math.abs(lo2) > 179.9) continue;
+      if (la1 < -89.5 && la2 < -89.5) continue;
+      if (Math.abs(lo2 - lo1) > 180) continue;
+      const steps = Math.max(1, Math.ceil(Math.max(Math.abs(lo2 - lo1), Math.abs(la2 - la1)) / 0.3));
+      for (let s = 0; s < steps; s++){
+        const t0 = s / steps, t1 = (s + 1) / steps;
+        pushSeg(lo1 + (lo2 - lo1) * t0, la1 + (la2 - la1) * t0, lo1 + (lo2 - lo1) * t1, la1 + (la2 - la1) * t1);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('aDir', new THREE.Float32BufferAttribute(D, 3));
+  g.setAttribute('aSide', new THREE.Float32BufferAttribute(Sd, 1));
+  g.setIndex(vi > 65535 ? new THREE.Uint32BufferAttribute(I, 1) : new THREE.Uint16BufferAttribute(I, 1));
+  return g;
+}
+const ringsOf = it => it.poly.flat();
+
+/* ---------------- highlight overlay (equirectangular canvas) ---------------- */
+const OW = 4096, OH = 2048;
+const ovCanvas = document.createElement('canvas'); ovCanvas.width = OW; ovCanvas.height = OH;
+const ovCtx = ovCanvas.getContext('2d');
+const ovTex = new THREE.CanvasTexture(ovCanvas); ovTex.colorSpace = THREE.SRGBColorSpace; ovTex.anisotropy = Math.min(8, maxAniso);
+const overlay = new THREE.Mesh(gridGeom(-180, 180, 90, -90, 512, 256, 1, {equi: true}), new THREE.MeshBasicMaterial({map: ovTex, transparent: true, depthWrite: false}));
+overlay.renderOrder = 2; scene.add(overlay);
+
+/* ---------------- data ---------------- */
+let ITEMS = [], BYID = new Map(), BYSET = {world: [], IND: [], CHN: []};
+const lineLayers = {};
+const outlines = {};
+const outlineGeoms = new Map();
+
+function prepItem(it){
+  let minx = 999, miny = 999, maxx = -999, maxy = -999, best = null, bestA = -1;
+  for (const poly of it.poly){
+    const r = poly[0]; let a0 = 999, b0 = 999, a1 = -999, b1 = -999;
+    for (let i = 0; i < r.length; i += 2){ a0 = Math.min(a0, r[i]); a1 = Math.max(a1, r[i]); b0 = Math.min(b0, r[i + 1]); b1 = Math.max(b1, r[i + 1]); }
+    minx = Math.min(minx, a0); maxx = Math.max(maxx, a1); miny = Math.min(miny, b0); maxy = Math.max(maxy, b1);
+    const ar = (a1 - a0) * (b1 - b0); if (ar > bestA){ bestA = ar; best = [a0, b0, a1, b1]; }
+  }
+  it.bb = [minx, miny, maxx, maxy]; it.mbb = best || it.bb;
+  it.lv = ll2v(it.lab[0], it.lab[1]);
+  it.size = Math.sqrt(Math.max(it.area, 1)) / 6371; // approx angular size in radians
+  it.tiny = it.area < 4000;
+  it.pool = it.k !== 'territory' && it.g !== 'other';
+}
+function pip(it, lon, lat){
+  const b = it.bb; if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) return false;
+  let inside = false;
+  for (const poly of it.poly) for (const r of poly){
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2){
+      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
+      if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/* ---------------- progress store (this browser + optional GitHub Gist sync) ---------------- */
+const P = {data: {}, updated: 0, resets: {}};
+{
+  const saved = ls.get('oa-progress', null);
+  if (saved && saved.data){ P.data = saved.data; P.updated = saved.updated || 0; P.resets = saved.resets || {}; }
+}
+function saveLocal(){ ls.set('oa-progress', {data: P.data, updated: P.updated, resets: P.resets}); }
+function rec(id){ return P.data[id]; }
+function status(id){
+  const r = P.data[id]; if (!r) return 'new';
+  if (r[0] >= 3) return 'm';
+  if (r[0] === 0 && r[2] > 0) return 'w';
+  return 'l';
+}
+function record(id, correct, hinted){
+  const r = P.data[id] ? P.data[id].slice() : [0, 0, 0, 0];
+  if (correct){ r[1]++; if (!hinted) r[0] = Math.min(5, r[0] + 1); }
+  else { r[2]++; r[0] = Math.max(0, r[0] - 2); }
+  r[3] = Date.now();
+  P.data[id] = r; P.updated = Date.now();
+  saveLocal();
+  scheduleSync();
+}
+const canon = o => JSON.stringify(Object.keys(o || {}).sort().map(k => [k, o[k]]));
+function mergeRemote(remote){
+  const resets = Object.assign({}, P.resets);
+  for (const [k, v] of Object.entries(remote.resets || {})) if (!resets[k] || v > resets[k]) resets[k] = v;
+  const out = Object.assign({}, P.data);
+  for (const [id, r] of Object.entries(remote.data || {})) if (Array.isArray(r) && (!out[id] || r[3] > out[id][3])) out[id] = r;
+  for (const [id, r] of Object.entries(out)){ const it = BYID.get(id); const rs = it && resets[it.set]; if (rs && r[3] <= rs) delete out[id]; }
+  P.data = out; P.resets = resets; saveLocal();
+}
+const GH = {token: ls.get('oa-gh-token', null), gist: ls.get('oa-gh-gist', null), state: 'off', error: '', last: 0, busy: false, again: false, timer: null};
+if (GH.token) GH.state = 'idle';
+const GFILE = 'orbit-atlas-progress.json';
+async function gh(path, opts = {}){
+  const headers = {'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + GH.token};
+  if (opts.body) headers['Content-Type'] = 'application/json';
+  const r = await fetch('https://api.github.com' + path, Object.assign({}, opts, {headers, cache: 'no-store'}));
+  if (!r.ok){ const e = new Error('GitHub ' + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+function payload(){ return JSON.stringify({v: 1, app: 'orbit-atlas', updated: Date.now(), data: P.data, resets: P.resets}); }
+async function findOrCreateGist(){
+  if (GH.gist) return GH.gist;
+  for (let page = 1; page <= 10 && !GH.gist; page++){
+    const list = await gh('/gists?per_page=100&page=' + page);
+    const g = list.find(g => g.files && g.files[GFILE]);
+    if (g) GH.gist = g.id;
+    if (list.length < 100) break;
+  }
+  if (!GH.gist){
+    const g = await gh('/gists', {method: 'POST', body: JSON.stringify({description: 'Orbit Atlas progress (kept in sync by the app)', public: false, files: {[GFILE]: {content: payload()}}})});
+    GH.gist = g.id;
+  }
+  ls.set('oa-gh-gist', GH.gist);
+  return GH.gist;
+}
+function scheduleSync(){
+  if (!GH.token) return;
+  clearTimeout(GH.timer); GH.timer = setTimeout(ghSync, 4000);
+}
+async function ghSync(){
+  if (!GH.token) return;
+  if (GH.busy){ GH.again = true; return; }
+  GH.busy = true; GH.state = 'syncing'; renderSync();
+  const before = canon(P.data);
+  try {
+    const id = await findOrCreateGist();
+    const g = await gh('/gists/' + id);
+    const f = g.files && g.files[GFILE];
+    let remote = null;
+    if (f){
+      let txt = f.content;
+      if (f.truncated) txt = await (await fetch(f.raw_url, {cache: 'no-store'})).text();
+      try { remote = JSON.parse(txt); } catch (e) { remote = null; }
+    }
+    if (remote) mergeRemote(remote);
+    const same = remote && canon(remote.data) === canon(P.data) && canon(remote.resets) === canon(P.resets);
+    if (!same) await gh('/gists/' + id, {method: 'PATCH', body: JSON.stringify({files: {[GFILE]: {content: payload()}}})});
+    GH.state = 'ok'; GH.error = ''; GH.last = Date.now();
+  } catch (e){
+    GH.state = 'error';
+    if (e.status === 401){ GH.error = 'GitHub didn’t accept this token. It may have expired or been deleted. Disconnect and paste a new one.'; }
+    else if (e.status === 403 || e.status === 422){ GH.error = 'This token can’t create or edit gists. Make a new token with the “gist” box ticked.'; }
+    else if (e.status === 404){ GH.error = 'The sync gist was deleted or can’t be reached. Tap Sync now to create a new one.'; GH.gist = null; ls.set('oa-gh-gist', null); }
+    else GH.error = 'Couldn’t reach GitHub. Your progress is still saved in this browser and will sync next time.';
+  }
+  GH.busy = false;
+  if (canon(P.data) !== before) refreshAfterProgressChange();
+  renderSync();
+  if (GH.again){ GH.again = false; ghSync(); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && GH.token && Date.now() - GH.last > 60000) ghSync(); });
+function ago(t){ const s = Math.round((Date.now() - t) / 1000); if (s < 60) return 'just now'; const m = Math.round(s / 60); if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); return h < 24 ? h + ' hr ago' : Math.round(h / 24) + ' days ago'; }
+const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=Orbit%20Atlas%20sync';
+function renderSync(){
+  const el = document.getElementById('sync-box'); if (!el) return;
+  const tag = document.getElementById('save-where'); if (tag) tag.textContent = GH.token ? 'Syncs with GitHub' : 'Saved in this browser';
+  if (!GH.token){
+    if (el.dataset.mode === 'off') return; // keep whatever is typed in the field
+    el.dataset.mode = 'off';
+    el.innerHTML = `
+      <div class="eyebrow"><span>Sync across devices</span></div>
+      <p class="note" style="color:var(--muted)">Keep your phone and computer in step by saving progress to a secret gist on your GitHub account.</p>
+      <ol class="note steps">
+        <li><a href="${TOKEN_URL}" target="_blank" rel="noopener">Create a GitHub token</a> with only the <b>gist</b> box ticked. Pick a long expiration so you don’t have to redo this often.</li>
+        <li>Paste it here. Do the same on each device.</li>
+      </ol>
+      <form class="row" id="gh-form" autocomplete="off">
+        <input type="password" id="gh-token" class="grow" placeholder="ghp_…" aria-label="GitHub token" spellcheck="false">
+        <button class="btn primary" type="submit">Connect</button>
+      </form>
+      <p class="note">The token is kept only in this browser. It never goes into the app’s public code.</p>`;
+    return;
+  }
+  el.dataset.mode = 'on';
+  const line = GH.state === 'syncing' ? 'Syncing with GitHub…' : GH.state === 'ok' ? `Synced with GitHub ${ago(GH.last)}` : GH.state === 'error' ? 'Sync problem' : 'Connected to GitHub';
+  el.innerHTML = `
+    <div class="eyebrow"><span>Sync across devices</span></div>
+    <div class="row"><span class="status ${GH.state === 'error' ? 'w' : 'm'}"><i></i>${esc(line)}</span></div>
+    ${GH.error ? `<p class="note" style="color:var(--bad)">${esc(GH.error)}</p>` : ''}
+    <div class="row">
+      <button class="btn" id="gh-sync" ${GH.busy ? 'disabled' : ''}>Sync now</button>
+      ${GH.gist ? `<a class="btn ghost" href="https://gist.github.com/${esc(GH.gist)}" target="_blank" rel="noopener">View gist</a>` : ''}
+      <span class="grow"></span>
+      <button class="btn ghost" id="gh-off">Disconnect</button>
+    </div>`;
+}
+
+/* ---------------- camera / view ---------------- */
+const view = {lat: 20, lon: 15, alt: 2.4};
+let dirty = true;
+function applyView(){
+  view.lat = clamp(view.lat, -82, 82);
+  view.lon = ((view.lon + 540) % 360) - 180;
+  view.alt = clamp(view.alt, MIN_ALT, MAX_ALT);
+  ll2v(view.lon, view.lat, 1 + view.alt, camera.position);
+  camera.up.set(0, 1, 0); camera.lookAt(0, 0, 0);
+  camera.near = Math.max(view.alt * 0.25, 0.00005); camera.far = 80;
+  const lift = 1 + clamp(view.alt * 0.004, 0.00001, 0.0007);
+  for (const m of lineMats) m.uniforms.uLift.value = lift * (m.userData.top ? 1 + clamp(view.alt * 0.0005, 0.000003, 0.0002) : 1);
+  overlay.scale.setScalar(1 + clamp(view.alt * 0.002, 0.000025, 0.0003));
+  const mobile = W <= 760;
+  camera.setViewOffset(W, H, mobile ? 0 : -178, mobile ? Math.round(H * 0.2) : 0, W, H);
+  camera.updateMatrixWorld();
+  camDir.copy(camera.position).normalize();
+  // ground angle visible
+  const D = 1 + view.alt;
+  const half = Math.atan(Math.tan(FOV / 2 * DEG) * Math.hypot(1, W / H) * 1.3);
+  const horizon = Math.acos(1 / D);
+  const s = D * Math.sin(half);
+  viewAngle = s >= 1 ? horizon : Math.min(horizon, Math.asin(s) - half);
+  pxScale = (H / 2) / Math.tan(FOV / 2 * DEG);
+  const worldPerPx = view.alt * 2 * Math.tan(FOV / 2 * DEG) / H;
+  for (const m of lineMats) m.uniforms.uWidth.value = m.userData.px * worldPerPx * 0.5;
+  const la = view.lat, lo = view.lon;
+  $('#coords').textContent = `${Math.abs(la).toFixed(2)}°${la >= 0 ? 'N' : 'S'}  ${Math.abs(lo).toFixed(2)}°${lo >= 0 ? 'E' : 'W'}  ·  alt ${Math.round(view.alt * 6371).toLocaleString()} km`;
+  dirty = true;
+}
+let fly = null;
+function flyTo(lat, lon, alt, ms = 1100){
+  const from = ll2v(view.lon, view.lat), to = ll2v(lon, lat);
+  const ang = from.angleTo(to);
+  const a0 = view.alt, a1 = clamp(alt, MIN_ALT, MAX_ALT);
+  const peak = Math.max(a0, a1, Math.min(2.2, ang * 1.1));
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  fly = {from, to, a0, a1, peak, t0: performance.now(), ms: reduce ? 1 : ms * (0.7 + Math.min(ang, 2) * 0.3)};
+  inertia = null;
+}
+function stepFly(now){
+  if (!fly) return;
+  let t = clamp((now - fly.t0) / fly.ms, 0, 1);
+  const e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const q = new THREE.Quaternion().setFromUnitVectors(fly.from, fly.to);
+  const qi = new THREE.Quaternion().slerp(q, e);
+  const v = fly.from.clone().applyQuaternion(qi);
+  const [lon, lat] = v2ll(v);
+  const lin = Math.exp(Math.log(fly.a0) + (Math.log(fly.a1) - Math.log(fly.a0)) * e);
+  const bump = Math.sin(Math.PI * e) * Math.max(0, fly.peak - Math.max(fly.a0, fly.a1)) ;
+  view.lat = lat; view.lon = lon; view.alt = lin + bump;
+  applyView();
+  if (t >= 1) fly = null;
+}
+const fit = a => a * (W <= 760 ? 1.6 : 1);
+function flyToItem(it, minAlt){
+  const b = it.mbb; const latMid = (b[1] + b[3]) / 2;
+  const ext = Math.max(b[3] - b[1], (b[2] - b[0]) * Math.cos(latMid * DEG)) * DEG;
+  const alt = fit(Math.max(ext * 2.4, minAlt || 0.12));
+  const inMain = it.lab[0] >= b[0] - 1 && it.lab[0] <= b[2] + 1 && it.lab[1] >= b[1] - 1 && it.lab[1] <= b[3] + 1;
+  flyTo(inMain ? it.lab[1] : latMid, inMain ? it.lab[0] : (b[0] + b[2]) / 2, alt);
+}
+
+/* ---------------- input ---------------- */
+const pointers = new Map();
+let drag = null, inertia = null, pinch = null;
+function degPerPx(){ return (view.alt * 2 * Math.tan(FOV / 2 * DEG) / H) / DEG; }
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  fly = null; inertia = null;
+  if (pointers.size === 1) drag = {x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), vx: 0, vy: 0, moved: false};
+  else if (pointers.size === 2){ const [a, b] = [...pointers.values()]; pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), alt: view.alt}; drag = null; }
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  if (pinch && pointers.size === 2){
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+    view.alt = pinch.alt * pinch.d / Math.max(d, 1); applyView(); return;
+  }
+  if (drag){
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5) { drag.moved = true; canvas.classList.add('dragging'); hideTip(); }
+    if (drag.moved){
+      const k = degPerPx();
+      const cl = Math.max(Math.cos(view.lat * DEG), 0.25);
+      view.lon -= dx * k / cl; view.lat += dy * k;
+      const now = performance.now(), dt = Math.max(now - drag.t, 1);
+      drag.vx = dx / dt; drag.vy = dy / dt; drag.t = now;
+      applyView();
+    }
+    drag.x = e.clientX; drag.y = e.clientY;
+  } else if (e.pointerType === 'mouse') hover(e.clientX, e.clientY);
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if (pinch && pointers.size < 2){ pinch = null; if (pointers.size === 1){ const p = [...pointers.values()][0]; drag = {x: p.x, y: p.y, sx: p.x, sy: p.y, t: performance.now(), vx: 0, vy: 0, moved: true}; } return; }
+  if (drag){
+    canvas.classList.remove('dragging');
+    if (!drag.moved && e.type === 'pointerup') onTap(e.clientX, e.clientY);
+    else if (performance.now() - drag.t < 80 && Math.hypot(drag.vx, drag.vy) > 0.05) inertia = {vx: drag.vx, vy: drag.vy, t: performance.now()};
+    drag = null;
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerleave', () => { if (!drag) { hideTip(); setOutline('hover', null); } });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault(); fly = null;
+  const f = Math.exp(clamp(e.deltaY, -120, 120) * (e.ctrlKey ? 0.01 : 0.0022));
+  const before = pickLL(e.clientX, e.clientY);
+  view.alt *= f; applyView();
+  // zoom toward cursor
+  if (before && f < 1){
+    const after = pickLL(e.clientX, e.clientY);
+    if (after){ view.lon += (before[0] - after[0]); view.lat += (before[1] - after[1]); applyView(); }
+  }
+}, {passive: false});
+function stepInertia(now){
+  if (!inertia) return;
+  const dt = now - inertia.t; inertia.t = now;
+  const k = degPerPx(); const cl = Math.max(Math.cos(view.lat * DEG), 0.25);
+  view.lon -= inertia.vx * dt * k / cl; view.lat += inertia.vy * dt * k;
+  const decay = Math.pow(0.93, dt / 16);
+  inertia.vx *= decay; inertia.vy *= decay;
+  if (Math.hypot(inertia.vx, inertia.vy) < 0.01) inertia = null;
+  applyView();
+}
+const ray = new THREE.Raycaster(), sphere = new THREE.Sphere(new THREE.Vector3(), 1), ndc = new THREE.Vector2(), hit = new THREE.Vector3();
+function pickLL(cx, cy){
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  return ray.ray.intersectSphere(sphere, hit) ? v2ll(hit) : null;
+}
+const proj = new THREE.Vector3();
+function screenOf(v){
+  if (v.dot(camera.position) <= 1.0) return null; // behind horizon
+  proj.copy(v).project(camera);
+  if (proj.z > 1) return null;
+  return [(proj.x + 1) / 2 * W, (1 - proj.y) / 2 * H];
+}
+function activeItems(){ return BYSET[S.set]; }
+function pickItem(cx, cy){
+  const ll = pickLL(cx, cy); if (!ll) return null;
+  const r = canvas.getBoundingClientRect(); const mx = cx - r.left, my = cy - r.top;
+  let inside = null, near = null, nearD = 18;
+  for (const it of activeItems()){
+    if (it.tiny){
+      const s = screenOf(it.lv);
+      if (s){ const d = Math.hypot(s[0] - mx, s[1] - my); if (d < nearD){ nearD = d; near = it; } }
+    }
+    if (!inside && pip(it, ll[0], ll[1])) inside = it;
+  }
+  if (near && (!inside || nearD < 11 || inside.id === near.id)) return near;
+  return inside;
+}
+
+/* ---------------- labels & marks ---------------- */
+const labelsEl = $('#labels');
+const labelEls = new Map();
+let marks = []; // {id, cls, text, ring}
+const markEls = [];
+function labelEl(it){
+  let el = labelEls.get(it.id);
+  if (!el){
+    el = document.createElement('div');
+    el.className = 'lbl' + (it.k === 'territory' ? ' terr' : '');
+    el.textContent = it.n; labelsEl.appendChild(el);
+    el._w = null; labelEls.set(it.id, el);
+  }
+  return el;
+}
+function labelsAllowed(){ return S.labels && (S.mode === 'explore' || S.mode === 'progress'); }
+function updateLabels(){
+  const show = labelsAllowed();
+  const placed = [];
+  const used = new Set();
+  const limbCos = Math.cos(Math.max(0, Math.acos(1 / (1 + view.alt)) - 0.12));
+  if (show){
+    const list = activeItems();
+    const minPx = S.set === 'world' ? 30 : 16;
+    for (const it of list){ // sorted by area desc
+      if (it.lv.dot(camDir) < limbCos && selectedId !== it.id) continue;
+      const s = screenOf(it.lv); if (!s) continue;
+      if (s[0] < -40 || s[0] > W + 40 || s[1] < -20 || s[1] > H + 20) continue;
+      const d = camera.position.distanceTo(it.lv);
+      const px = it.size / d * pxScale;
+      const selected = selectedId === it.id;
+      if (px < minPx && !selected) continue;
+      const big = S.set === 'world' ? px > 150 : px > 90;
+      const el = labelEl(it);
+      if (el._big !== big){ el.classList.toggle('big', big); el._big = big; el._w = null; }
+      if (el._w == null){ el.hidden = false; el._w = el.offsetWidth; el._h = el.offsetHeight; }
+      const w = el._w, h = el._h;
+      const x = s[0] - w / 2, y = s[1] - h / 2;
+      let ok = true;
+      for (const p of placed){ if (x < p[2] + 4 && x + w + 4 > p[0] && y < p[3] + 2 && y + h + 2 > p[1]){ ok = false; break; } }
+      if (!ok && !selected) continue;
+      placed.push([x, y, x + w, y + h]);
+      el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+      el.hidden = false; used.add(it.id);
+    }
+  }
+  for (const [id, el] of labelEls) if (!used.has(id) && !el.hidden) el.hidden = true;
+  // marks
+  while (markEls.length < marks.length){
+    const el = document.createElement('div'); el.className = 'mark';
+    el.innerHTML = '<div class="ring"></div><div class="tag"></div>'; labelsEl.appendChild(el); markEls.push(el);
+  }
+  markEls.forEach((el, i) => {
+    const m = marks[i];
+    if (!m){ el.hidden = true; return; }
+    const it = BYID.get(m.id); const s = it && screenOf(it.lv);
+    if (!s){ el.hidden = true; return; }
+    el.hidden = false;
+    el.className = 'mark ' + (m.cls || '');
+    el.firstChild.hidden = !m.ring; el.lastChild.hidden = !m.text; el.lastChild.textContent = m.text || '';
+    el.style.transform = `translate(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px)`;
+  });
+}
+
+/* ---------------- outlines & fills ---------------- */
+const COLORS = {hover: '#ffffff', sel: '#f2b134', target: '#f2b134', good: '#4fd18b', bad: '#ff6b5e'};
+function setOutline(slot, id){
+  const m = outlines[slot];
+  if (m.userData.id === id) return;
+  m.userData.id = id;
+  if (!id){ m.visible = false; dirty = true; return; }
+  let g = outlineGeoms.get(id);
+  if (!g){ g = buildLines(ringsOf(BYID.get(id))); outlineGeoms.set(id, g); }
+  m.geometry = g; m.visible = true; dirty = true;
+}
+let fills = new Map(); // id -> css color
+function hexA(hex, a){ const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${a})`; }
+const MASTERY_COL = {w: '#ff6b5e', l: '#f2b134', m: '#4fd18b'};
+function masteryOn(){ return S.mastery || S.mode === 'progress'; }
+function drawItem(it, color){
+  ovCtx.fillStyle = color; ovCtx.beginPath();
+  for (const poly of it.poly) for (const r of poly){
+    for (let i = 0; i < r.length; i += 2){
+      const x = (r[i] + 180) / 360 * OW, y = (90 - r[i + 1]) / 180 * OH;
+      if (i === 0) ovCtx.moveTo(x, y); else ovCtx.lineTo(x, y);
+    }
+    ovCtx.closePath();
+  }
+  ovCtx.fill('evenodd');
+}
+function redrawOverlay(){
+  ovCtx.clearRect(0, 0, OW, OH);
+  if (masteryOn()){
+    for (const it of activeItems()){
+      if (!it.pool) continue; const st = status(it.id); if (st === 'new') continue;
+      drawItem(it, hexA(MASTERY_COL[st], 0.42));
+    }
+  }
+  for (const [id, col] of fills){ const it = BYID.get(id); if (it) drawItem(it, col); }
+  ovTex.needsUpdate = true; dirty = true;
+}
+
+/* ---------------- UI: layers, modes, sets ---------------- */
+function syncToggles(){
+  const quiz = S.mode === 'find' || S.mode === 'name';
+  $('#t-borders').setAttribute('aria-pressed', S.borders);
+  $('#t-labels').setAttribute('aria-pressed', S.labels && !quiz);
+  $('#t-labels').disabled = quiz;
+  $('#t-labels').title = quiz ? 'Labels are hidden during quizzes' : '';
+  $('#t-mastery').setAttribute('aria-pressed', masteryOn());
+  $('#t-esri').setAttribute('aria-pressed', S.src === 'esri');
+  $('#attrib').innerHTML = SOURCES[S.src].credit;
+  $('#t-mastery').disabled = S.mode === 'progress';
+  for (const k in lineLayers) lineLayers[k].visible = S.borders && (k === 'world' || k === S.set);
+  if (lineLayers.world) lineLayers.world.material.uniforms.uOpacity.value = S.set === 'world' ? 0.75 : 0.9;
+  dirty = true;
+}
+$('#t-borders').onclick = () => { S.borders = !S.borders; savePrefs(); syncToggles(); };
+$('#t-labels').onclick = () => { S.labels = !S.labels; savePrefs(); syncToggles(); };
+$('#t-esri').onclick = () => { S.src = S.src === 'esri' ? 'sentinel' : 'esri'; savePrefs(); syncToggles(); dirty = true; };
+$('#t-mastery').onclick = () => { S.mastery = !S.mastery; savePrefs(); syncToggles(); redrawOverlay(); };
+
+function poolItems(){
+  return activeItems().filter(it => it.pool && (S.set !== 'world' || S.groups.has(it.g)));
+}
+function renderChips(){
+  const el = $('#chips');
+  if (S.set !== 'world'){ el.hidden = true; return; }
+  el.hidden = false;
+  const counts = {}; for (const it of BYSET.world) if (it.pool) counts[it.g] = (counts[it.g] || 0) + 1;
+  const all = S.groups.size === Object.keys(GROUPS).length;
+  el.innerHTML = `<button class="chip" data-g="*" aria-pressed="${all}">All regions</button>` +
+    Object.entries(GROUPS).map(([g, n]) => `<button class="chip" data-g="${g}" aria-pressed="${!all && S.groups.has(g)}">${n}<span class="n">${counts[g] || 0}</span></button>`).join('');
+}
+$('#chips').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  const g = b.dataset.g; const allKeys = Object.keys(GROUPS);
+  const all = S.groups.size === allKeys.length;
+  if (g === '*') S.groups = new Set(allKeys);
+  else if (all) S.groups = new Set([g]);
+  else { if (S.groups.has(g)) S.groups.delete(g); else S.groups.add(g); if (!S.groups.size) S.groups = new Set(allKeys); }
+  savePrefs(); renderChips(); updatePoolCount();
+  if (S.groups.size === 1 && g !== '*'){ const v = GROUP_VIEW[[...S.groups][0]]; flyTo(v[0], v[1], fit(v[2])); }
+  if (S.mode === 'find' || S.mode === 'name') newQuestion();
+  if (S.mode === 'progress') renderProgress();
+});
+function updatePoolCount(){
+  const p = poolItems(); const m = p.filter(it => status(it.id) === 'm').length;
+  $('#pool-count').textContent = `${m}/${p.length} mastered`;
+}
+$('#set').value = S.set;
+$('#set').addEventListener('change', e => {
+  S.set = e.target.value; savePrefs();
+  selectedId = null; setOutline('sel', null); setOutline('hover', null);
+  renderChips(); updatePoolCount(); syncToggles();
+  const v = SET_VIEW[S.set]; flyTo(v[0], v[1], fit(v[2]));
+  labelEls.forEach(el => el.hidden = true);
+  enterMode(S.mode, true);
+});
+
+document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => enterMode(b.dataset.mode)));
+function enterMode(mode, force){
+  if (S.mode === mode && !force) return;
+  S.mode = mode;
+  document.querySelectorAll('#modes button').forEach(b => b.setAttribute('aria-selected', b.dataset.mode === mode));
+  $('#p-explore').hidden = mode !== 'explore';
+  $('#p-quiz').hidden = !(mode === 'find' || mode === 'name');
+  $('#p-progress').hidden = mode !== 'progress';
+  canvas.classList.toggle('pointing', mode === 'find');
+  marks = []; fills = new Map(); hideTip();
+  ['hover', 'sel', 'target', 'good', 'bad'].forEach(s => setOutline(s, null));
+  if (mode === 'explore'){ renderInfo(); if (selectedId) selectItem(selectedId, false); }
+  if (mode === 'find' || mode === 'name'){ Q.stats = {n: 0, c: 0, streak: 0}; Q.recent = []; newQuestion(); }
+  if (mode === 'progress') renderProgress();
+  syncToggles(); redrawOverlay();
+}
+
+/* ---------------- explore ---------------- */
+let selectedId = null;
+const fmt = n => n.toLocaleString('en-US');
+function kindLabel(it){
+  if (it.set === 'world'){
+    if (it.k === 'territory') return it.of ? `Territory of ${it.of}` : 'Territory';
+    return 'Country · ' + (GROUPS[it.g] || '');
+  }
+  return it.k + ' of ' + (it.set === 'IND' ? 'India' : 'China');
+}
+function statusChip(id){
+  const st = status(id), r = rec(id);
+  const lab = {new: 'Not quizzed yet', m: 'Mastered', l: 'Learning', w: 'Needs work'}[st];
+  return `<span class="status ${st}"><i></i>${lab}</span>` + (r ? ` <span class="note">${r[1]} right · ${r[2]} missed</span>` : '');
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c])); }
+function renderInfo(){
+  const el = $('#info');
+  if (!selectedId){
+    el.innerHTML = `<p class="empty">Drag to spin the globe, scroll or pinch to zoom. Click any ${SET_NOUN[S.set]} to see what it is, or search above.</p>
+      <p class="note">Keys: arrow keys rotate, <kbd>+</kbd> <kbd>−</kbd> zoom.</p>`;
+    return;
+  }
+  const it = BYID.get(selectedId);
+  const nb = (it.nb || []).map(id => BYID.get(id)).filter(Boolean);
+  const lat = it.lab[1], lon = it.lab[0];
+  el.innerHTML = `
+    <div class="info-head">${it.fl ? `<span class="flag">${it.fl}</span>` : ''}<div><h2>${esc(it.n)}</h2><div class="sub" style="margin-top:4px">${esc(kindLabel(it))}</div></div></div>
+    <dl class="kv">
+      ${it.cap ? `<dt>Capital</dt><dd>${esc(it.cap)}</dd>` : ''}
+      ${it.sub && it.set === 'world' ? `<dt>Subregion</dt><dd>${esc(it.sub)}</dd>` : ''}
+      <dt>Area</dt><dd class="mono">${fmt(Math.round(it.area))} km² · ${fmt(Math.round(it.area * 0.3861))} mi²</dd>
+      <dt>Center</dt><dd class="mono">${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'}</dd>
+      ${nb.length ? `<dt>Borders</dt><dd>${nb.map(n => `<button class="linkish" data-id="${n.id}">${esc(n.n)}</button>`).join(', ')}</dd>` : (it.set === 'world' && it.k === 'country' ? '<dt>Borders</dt><dd>None on land</dd>' : '')}
+      ${it.pool ? `<dt>Your record</dt><dd>${statusChip(it.id)}</dd>` : ''}
+    </dl>`;
+}
+$('#info').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) selectItem(b.dataset.id, true); });
+function selectItem(id, fly){
+  selectedId = id; const it = BYID.get(id);
+  setOutline('sel', id);
+  fills = new Map([[id, hexA('#f2b134', 0.28)]]);
+  marks = it.tiny ? [{id, ring: true}] : [];
+  redrawOverlay(); renderInfo();
+  if (fly) flyToItem(it, S.set === 'world' ? 0.25 : 0.18);
+}
+// search
+const searchEl = $('#search'), resultsEl = $('#results');
+function norm(s){ return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&/g, 'and').replace(/\bst\.?\s/g, 'saint ').replace(/[^a-z0-9]+/g, ' ').replace(/^the /, '').trim(); }
+let resIdx = 0, resList = [];
+function renderResults(){
+  const q = norm(searchEl.value);
+  if (!q){ resultsEl.hidden = true; return; }
+  const scored = [];
+  for (const it of activeItems()){
+    const names = [it.n, ...(it.alt || [])].map(norm);
+    let best = 99;
+    for (const n of names){ if (n.startsWith(q)) best = Math.min(best, 0); else if (n.includes(' ' + q)) best = Math.min(best, 1); else if (n.includes(q)) best = Math.min(best, 2); }
+    if (it.cap && norm(it.cap).startsWith(q)) best = Math.min(best, 3);
+    if (best < 99) scored.push([best, it]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || b[1].area - a[1].area);
+  resList = scored.slice(0, 8).map(s => s[1]); resIdx = 0;
+  resultsEl.hidden = !resList.length;
+  resultsEl.innerHTML = resList.map((it, i) => `<button data-id="${it.id}" class="${i === resIdx ? 'on' : ''}">${it.fl || ''} ${esc(it.n)}<small>${esc(it.cap || '')}</small></button>`).join('');
+}
+searchEl.addEventListener('input', renderResults);
+searchEl.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); if (!resList.length) return; resIdx = (resIdx + (e.key === 'ArrowDown' ? 1 : -1) + resList.length) % resList.length; [...resultsEl.children].forEach((b, i) => b.classList.toggle('on', i === resIdx)); }
+  if (e.key === 'Enter' && resList[resIdx]){ selectItem(resList[resIdx].id, true); searchEl.value = ''; resultsEl.hidden = true; searchEl.blur(); }
+  if (e.key === 'Escape'){ searchEl.value = ''; resultsEl.hidden = true; }
+  e.stopPropagation();
+});
+resultsEl.addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b){ selectItem(b.dataset.id, true); searchEl.value = ''; resultsEl.hidden = true; } });
+
+/* ---------------- hover / tap ---------------- */
+const tip = $('#tip');
+function hideTip(){ tip.hidden = true; }
+let hoverRAF = 0, hoverXY = null;
+function hover(x, y){
+  hoverXY = [x, y];
+  if (hoverRAF) return;
+  hoverRAF = requestAnimationFrame(() => {
+    hoverRAF = 0; const [cx, cy] = hoverXY;
+    if (S.mode === 'name'){ setOutline('hover', null); hideTip(); return; }
+    const it = S.mode === 'name' ? null : pickItem(cx, cy);
+    setOutline('hover', it && it.id !== outlines.sel.userData.id ? it.id : null);
+    if (it && (S.mode === 'explore' || S.mode === 'progress')){
+      tip.innerHTML = `${it.fl ? it.fl + ' ' : ''}${esc(it.n)}${it.k === 'territory' && it.of ? `<small>${esc(it.of)}</small>` : ''}`;
+      tip.hidden = false;
+      const r = canvas.getBoundingClientRect();
+      tip.style.transform = `translate(${cx - r.left + 14}px,${cy - r.top + 14}px)`;
+    } else hideTip();
+  });
+}
+function onTap(x, y){
+  const it = pickItem(x, y);
+  if (S.mode === 'explore' || S.mode === 'progress'){
+    if (!it){ selectedId = null; setOutline('sel', null); fills = new Map(); marks = []; redrawOverlay(); renderInfo(); return; }
+    if (S.mode === 'progress') enterMode('explore');
+    selectItem(it.id, false);
+  } else if (S.mode === 'find'){ answerFind(it); }
+}
+
+/* ---------------- quiz ---------------- */
+const Q = {item: null, answered: false, hinted: false, choices: [], stats: {n: 0, c: 0, streak: 0}, recent: []};
+function weightOf(it){
+  const r = rec(it.id);
+  if (!r) return 3;
+  const age = (Date.now() - r[3]) / 60000; // minutes
+  return Math.pow(6 - r[0], 2) * (r[0] >= 3 ? Math.min(1, 0.15 + age / 600) : 1) + (r[2] > r[1] ? 4 : 0);
+}
+function pickNext(){
+  let pool = poolItems();
+  if (S.weak){ const w = pool.filter(it => status(it.id) !== 'm'); if (w.length) pool = w; }
+  const avoid = new Set(Q.recent.slice(-Math.min(8, Math.floor(pool.length / 2))));
+  let cands = pool.filter(it => !avoid.has(it.id)); if (!cands.length) cands = pool;
+  const ws = cands.map(weightOf); let tot = ws.reduce((a, b) => a + b, 0), r = Math.random() * tot;
+  for (let i = 0; i < cands.length; i++){ r -= ws[i]; if (r <= 0) return cands[i]; }
+  return cands[cands.length - 1];
+}
+function subFor(it){
+  if (it.set === 'world') return GROUPS[it.g] || '';
+  return it.k + ' · ' + (it.set === 'IND' ? 'India' : 'China');
+}
+function newQuestion(){
+  const it = pickNext(); if (!it) return;
+  Q.item = it; Q.answered = false; Q.hinted = false;
+  Q.recent.push(it.id); if (Q.recent.length > 30) Q.recent.shift();
+  marks = []; fills = new Map();
+  ['hover', 'sel', 'target', 'good', 'bad'].forEach(s => setOutline(s, null));
+  $('#q-hint').hidden = true; $('#q-fb').hidden = true; $('#q-next').hidden = true;
+  $('#q-hintbtn').hidden = false; $('#q-skip').hidden = false;
+  $('#q-hintbtn').disabled = false;
+  const find = S.mode === 'find';
+  $('#q-eyebrow').textContent = find ? `Find this ${SET_NOUN[S.set]}` : `Name this ${SET_NOUN[S.set]}`;
+  $('#q-prompt').hidden = !find;
+  $('#q-flag').textContent = find ? (it.fl || '') : '';
+  $('#q-name').textContent = find ? it.n : '';
+  $('#q-sub').textContent = find ? subFor(it) : '';
+  $('#q-sub').hidden = !find;
+  $('#o-typing-wrap').hidden = find;
+  $('#q-skip').textContent = find ? 'Show me' : 'Reveal';
+  if (find){
+    $('#q-choices').hidden = true; $('#q-typed').hidden = true;
+    if (S.set !== 'world'){ /* keep view */ }
+  } else {
+    setOutline('target', it.id);
+    fills = new Map([[it.id, hexA('#f2b134', 0.38)]]);
+    marks = it.tiny ? [{id: it.id, ring: true}] : [];
+    flyToItem(it, S.set === 'world' ? 0.75 : 0.32);
+    if (S.typing){
+      $('#q-choices').hidden = true; $('#q-typed').hidden = false;
+      const inp = $('#q-input'); inp.value = ''; inp.disabled = false; setTimeout(() => inp.focus({preventScroll: true}), 50);
+    } else {
+      $('#q-typed').hidden = true; $('#q-choices').hidden = false;
+      Q.choices = makeChoices(it);
+      $('#q-choices').innerHTML = Q.choices.map((c, i) => `<button class="choice" data-id="${c.id}"><kbd>${i + 1}</kbd><span>${esc(c.n)}</span></button>`).join('');
+    }
+  }
+  updateScore(); redrawOverlay();
+}
+function makeChoices(it){
+  const same = poolItems().filter(o => o.id !== it.id);
+  const all = activeItems().filter(o => o.pool && o.id !== it.id);
+  const src = same.length >= 3 ? same : all;
+  const byDist = src.map(o => [o.lv.angleTo(it.lv), o]).sort((a, b) => a[0] - b[0]);
+  const near = byDist.slice(0, 8).map(x => x[1]);
+  const picks = [];
+  const take = (arr) => { const c = arr.filter(o => !picks.includes(o)); if (c.length) picks.push(c[Math.random() * c.length | 0]); };
+  take(near); take(near); take(src.filter(o => !near.includes(o)).length ? src.filter(o => !near.includes(o)) : src);
+  while (picks.length < 3) take(src);
+  const out = [it, ...picks.slice(0, 3)];
+  for (let i = out.length - 1; i > 0; i--){ const j = Math.random() * (i + 1) | 0; [out[i], out[j]] = [out[j], out[i]]; }
+  return out;
+}
+function updateScore(){
+  $('#q-score').textContent = `${Q.stats.c}/${Q.stats.n}`;
+  $('#q-streak').textContent = Q.stats.streak;
+  const p = poolItems(); const left = p.filter(it => status(it.id) !== 'm').length;
+  $('#q-left').textContent = `${left} to master`;
+  updatePoolCount();
+}
+function feedback(ok, it, extra){
+  const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb ' + (ok ? 'good' : 'bad');
+  const cap = it.cap ? `<span class="cap">Capital: ${esc(it.cap)}</span>` : '';
+  fb.innerHTML = (ok ? `<b>Correct.</b> ${it.fl ? it.fl + ' ' : ''}${esc(it.n)}` : `${extra || ''}<b>${it.fl ? it.fl + ' ' : ''}${esc(it.n)}</b> is highlighted in green.`) + cap;
+  $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
+}
+let autoNext = null;
+function finish(ok){
+  Q.answered = true; Q.stats.n++;
+  if (ok){ Q.stats.c++; Q.stats.streak++; } else Q.stats.streak = 0;
+  record(Q.item.id, ok, Q.hinted);
+  updateScore();
+  clearTimeout(autoNext);
+  if (ok) autoNext = setTimeout(() => { if (Q.answered && (S.mode === 'find' || S.mode === 'name')) newQuestion(); }, 1400);
+  if (masteryOn()) redrawOverlay();
+}
+function answerFind(it){
+  if (Q.answered || !Q.item) return;
+  const target = Q.item;
+  if (!it){ return; }
+  const ok = it.id === target.id;
+  if (ok){
+    fills = new Map([[target.id, hexA('#4fd18b', 0.45)]]); setOutline('good', target.id);
+    marks = [{id: target.id, cls: 'good', ring: target.tiny, text: target.n}];
+    feedback(true, target);
+  } else {
+    fills = new Map([[it.id, hexA('#ff6b5e', 0.4)], [target.id, hexA('#4fd18b', 0.5)]]);
+    setOutline('bad', it.id); setOutline('good', target.id);
+    marks = [{id: it.id, cls: 'bad', ring: it.tiny, text: it.n}, {id: target.id, cls: 'good', ring: true, text: target.n}];
+    feedback(false, target, `That's ${esc(it.n)}. `);
+    showBoth(it, target);
+  }
+  setOutline('hover', null);
+  redrawOverlay(); finish(ok);
+}
+function showBoth(a, b){
+  const va = a.lv, vb = b.lv; const mid = va.clone().add(vb).normalize();
+  const ang = va.angleTo(vb);
+  const [lon, lat] = v2ll(mid.lengthSq() > 0.01 ? mid : vb);
+  const ext = Math.max(ang * 1.6, (b.mbb[3] - b.mbb[1]) * DEG * 2.4);
+  flyTo(lat, lon, fit(clamp(ext, S.set === 'world' ? 0.5 : 0.25, 2.6)));
+}
+function answerName(id, typed){
+  if (Q.answered || !Q.item) return;
+  const target = Q.item; const ok = id === target.id;
+  fills = new Map([[target.id, hexA(ok ? '#4fd18b' : '#4fd18b', 0.45)]]);
+  setOutline('target', null); setOutline('good', target.id);
+  marks = [{id: target.id, cls: 'good', ring: target.tiny, text: target.n}];
+  document.querySelectorAll('#q-choices .choice').forEach(b => {
+    b.disabled = true;
+    if (b.dataset.id === target.id) b.classList.add('good');
+    else if (b.dataset.id === id) b.classList.add('bad');
+  });
+  if (typed != null) $('#q-input').disabled = true;
+  const other = id && id !== target.id ? BYID.get(id) : null;
+  feedback(ok, target, typed != null && !ok ? (typed ? `Not “${esc(typed)}”. ` : '') : (other ? `Not ${esc(other.n)}. ` : ''));
+  redrawOverlay(); finish(ok);
+}
+$('#q-choices').addEventListener('click', e => { const b = e.target.closest('.choice'); if (b && !b.disabled) answerName(b.dataset.id); });
+function lev(a, b){
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({length: n + 1}, (_, i) => i);
+  for (let i = 1; i <= m; i++){ const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+function matches(it, txt){
+  const q = norm(txt); if (!q) return false;
+  const names = [it.n, ...(it.alt || [])].map(norm);
+  return names.some(n => n === q || (n.length >= 5 && lev(n, q) <= (n.length >= 9 ? 2 : 1)));
+}
+$('#q-typed').addEventListener('submit', e => {
+  e.preventDefault(); if (Q.answered) { newQuestion(); return; }
+  const txt = $('#q-input').value.trim(); if (!txt) return;
+  if (matches(Q.item, txt)) answerName(Q.item.id, txt);
+  else {
+    const other = activeItems().find(o => o.id !== Q.item.id && matches(o, txt));
+    answerName(other ? other.id : null, txt);
+  }
+});
+$('#q-next').onclick = () => { clearTimeout(autoNext); newQuestion(); };
+$('#q-skip').onclick = () => {
+  if (Q.answered || !Q.item) return;
+  const t = Q.item;
+  fills = new Map([[t.id, hexA('#4fd18b', 0.5)]]); setOutline('target', null); setOutline('good', t.id);
+  marks = [{id: t.id, cls: 'good', ring: true, text: t.n}];
+  document.querySelectorAll('#q-choices .choice').forEach(b => { b.disabled = true; if (b.dataset.id === t.id) b.classList.add('good'); });
+  feedback(false, t, '');
+  if (S.mode === 'find') flyToItem(t, S.set === 'world' ? 0.6 : 0.3);
+  redrawOverlay(); finish(false);
+};
+$('#q-hintbtn').onclick = () => {
+  if (Q.answered || !Q.item) return;
+  const it = Q.item; Q.hinted = true;
+  const parts = [];
+  if (S.mode === 'find'){
+    if (it.cap) parts.push(`Capital: <b>${esc(it.cap)}</b>.`);
+    const nb = (it.nb || []).map(id => BYID.get(id)).filter(Boolean).map(n => esc(n.n));
+    if (nb.length) parts.push(`Borders ${nb.slice(0, 5).join(', ')}${nb.length > 5 ? ' and more' : ''}.`);
+    else if (it.set === 'world') parts.push('It has no land borders.');
+    const lat = it.lab[1], lon = it.lab[0];
+    parts.push(`Around ${Math.round(Math.abs(lat))}°${lat >= 0 ? 'N' : 'S'}, ${Math.round(Math.abs(lon))}°${lon >= 0 ? 'E' : 'W'}.`);
+  } else {
+    parts.push(`Starts with <b>${esc(it.n[0])}</b>, ${it.n.replace(/[^A-Za-z]/g, '').length} letters.`);
+    if (it.cap) parts.push(`Capital: <b>${esc(it.cap)}</b>.`);
+  }
+  $('#q-hint').innerHTML = parts.join(' '); $('#q-hint').hidden = false; $('#q-hintbtn').disabled = true;
+};
+$('#o-weak').checked = S.weak; $('#o-typing').checked = S.typing;
+$('#o-weak').onchange = e => { S.weak = e.target.checked; savePrefs(); if (!Q.answered) newQuestion(); };
+$('#o-typing').onchange = e => { S.typing = e.target.checked; savePrefs(); if (!Q.answered) newQuestion(); };
+
+/* ---------------- progress ---------------- */
+let confirmReset = false;
+function counts(list){ let m = 0, l = 0, n = 0; for (const it of list){ const s = status(it.id); if (s === 'm') m++; else if (s === 'new') n++; else l++; } return {m, l, n, t: list.length}; }
+function barRow(label, list){
+  const c = counts(list); const pm = c.t ? c.m / c.t * 100 : 0, pl = c.t ? c.l / c.t * 100 : 0;
+  return `<div class="barrow"><span>${esc(label)}</span><span class="num">${c.m}/${c.t}</span><div class="track"><i class="m" style="width:${pm}%"></i><i class="l" style="width:${pl}%"></i></div></div>`;
+}
+function renderProgress(){
+  const el = $('#p-progress');
+  const pool = activeItems().filter(it => it.pool);
+  const c = counts(pool);
+  let rows = '';
+  if (S.set === 'world') for (const [g, n] of Object.entries(GROUPS)) rows += barRow(n, pool.filter(it => it.g === g));
+  else { const kinds = [...new Set(pool.map(it => it.k))]; for (const k of kinds) rows += barRow(k.endsWith('y') ? k.slice(0, -1) + 'ies' : k + 's', pool.filter(it => it.k === k)); }
+  const weak = pool.filter(it => { const s = status(it.id); return s === 'w' || s === 'l'; })
+    .sort((a, b) => (rec(a.id)[0] - rec(b.id)[0]) || (rec(b.id)[2] - rec(a.id)[2])).slice(0, 10);
+  const other = ['world', 'IND', 'CHN'].filter(s => s !== S.set).map(s => { const cc = counts(BYSET[s].filter(it => it.pool)); return `<span>${{world: 'World', IND: 'India', CHN: 'China'}[s]} <b style="color:var(--ink);font-weight:500">${cc.m}/${cc.t}</b></span>`; }).join('');
+  el.innerHTML = `
+    <div class="eyebrow"><span>${esc(SET_NOUNS[S.set])}</span><span id="save-where"></span></div>
+    <div class="big-stats">
+      <div class="stat m"><b>${c.m}</b><span>Mastered</span></div>
+      <div class="stat l"><b>${c.l}</b><span>Learning</span></div>
+      <div class="stat"><b>${c.n}</b><span>Not seen</span></div>
+    </div>
+    <div class="legend"><span><i class="dot" style="background:var(--good)"></i>Mastered (3+ right in a row)</span><span><i class="dot" style="background:var(--learn)"></i>Learning</span><span><i class="dot" style="background:var(--bad)"></i>Missed last time</span></div>
+    <div class="bars">${rows}</div>
+    <div class="eyebrow"><span>Needs work</span></div>
+    ${weak.length ? `<div class="weak">${weak.map(it => { const r = rec(it.id); return `<button data-id="${it.id}"><i class="dot" style="background:${MASTERY_COL[status(it.id)]}"></i><span>${it.fl ? it.fl + ' ' : ''}${esc(it.n)}</span><span class="mono">${r[1]}✓ ${r[2]}✗</span></button>`; }).join('')}</div>` : `<p class="empty">Nothing flagged yet. Take a quiz and the places you miss will show up here.</p>`}
+    <div class="row">
+      <button class="btn primary" id="pr-drill" ${weak.length ? '' : 'disabled'}>Drill weak spots</button>
+      <span class="grow"></span>
+      ${confirmReset ? `<button class="btn danger" id="pr-reset-yes">Erase ${esc(SET_NOUNS[S.set])} progress</button><button class="btn ghost" id="pr-reset-no">Cancel</button>` : `<button class="btn ghost" id="pr-reset">Reset…</button>`}
+    </div>
+    <div class="legend">${other}</div>
+    <div id="sync-box" class="sync"></div>`;
+  renderSync();
+  updatePoolCount();
+}
+$('#p-progress').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.id){ enterMode('explore'); selectItem(b.dataset.id, true); return; }
+  if (b.id === 'pr-drill'){ S.weak = true; $('#o-weak').checked = true; savePrefs(); enterMode('find'); return; }
+  if (b.id === 'gh-sync'){ ghSync(); return; }
+  if (b.id === 'gh-off'){ GH.token = null; GH.gist = null; GH.state = 'off'; GH.error = ''; ls.set('oa-gh-token', null); ls.set('oa-gh-gist', null); renderSync(); return; }
+  if (b.id === 'pr-reset'){ confirmReset = true; renderProgress(); return; }
+  if (b.id === 'pr-reset-no'){ confirmReset = false; renderProgress(); return; }
+  if (b.id === 'pr-reset-yes'){
+    for (const it of activeItems()) delete P.data[it.id];
+    P.updated = Date.now(); P.resets[S.set] = Date.now(); saveLocal(); scheduleSync();
+    confirmReset = false; renderProgress(); redrawOverlay();
+  }
+});
+$('#p-progress').addEventListener('submit', e => {
+  if (e.target.id !== 'gh-form') return;
+  e.preventDefault();
+  const tok = $('#gh-token').value.trim(); if (!tok) return;
+  GH.token = tok; GH.gist = null; GH.state = 'idle'; ls.set('oa-gh-token', tok); ls.set('oa-gh-gist', null);
+  renderSync(); ghSync().then(() => { if (GH.state === 'error' && /token/.test(GH.error)){ GH.token = null; ls.set('oa-gh-token', null); const msg = GH.error; renderSync(); const box = $('#sync-box'); if (box) box.insertAdjacentHTML('beforeend', `<p class="note" style="color:var(--bad)">${esc(msg)}</p>`); } });
+});
+function refreshAfterProgressChange(){ updatePoolCount(); if (S.mode === 'progress') renderProgress(); if (S.mode === 'explore') renderInfo(); redrawOverlay(); }
+
+/* ---------------- keys & buttons ---------------- */
+$('#z-in').onclick = () => flyTo(view.lat, view.lon, view.alt / 1.8, 450);
+$('#z-out').onclick = () => flyTo(view.lat, view.lon, view.alt * 1.8, 450);
+$('#z-home').onclick = () => { const v = SET_VIEW[S.set]; flyTo(v[0], v[1], fit(v[2])); };
+addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown'){
+    e.preventDefault(); const s = view.alt * 12;
+    view.lon += (k === 'ArrowRight' ? s : k === 'ArrowLeft' ? -s : 0); view.lat += (k === 'ArrowUp' ? s * 0.8 : k === 'ArrowDown' ? -s * 0.8 : 0); fly = null; applyView();
+  } else if (k === '+' || k === '='){ flyTo(view.lat, view.lon, view.alt / 1.6, 350); }
+  else if (k === '-' || k === '_'){ flyTo(view.lat, view.lon, view.alt * 1.6, 350); }
+  else if (S.mode === 'name' && !Q.answered && /^[1-4]$/.test(k) && !S.typing){ const c = Q.choices[+k - 1]; if (c) answerName(c.id); }
+  else if ((k === 'Enter' || k === ' ') && Q.answered && (S.mode === 'find' || S.mode === 'name') && !e.target.closest('button')){ e.preventDefault(); clearTimeout(autoNext); newQuestion(); }
+});
+
+/* ---------------- loop ---------------- */
+let lastTileUpdate = 0;
+function loop(now){
+  frame++;
+  stepFly(now); stepInertia(now);
+  if (dirty){
+    dirty = false;
+    updateTiles(); updateLabels();
+    renderer.render(scene, camera);
+    lastTileUpdate = now;
+  } else if (pending() && now - lastTileUpdate > 250){ dirty = true; }
+  requestAnimationFrame(loop);
+}
+
+/* ---------------- boot ---------------- */
+async function boot(){
+  resize(); addEventListener('resize', resize);
+  const v = SET_VIEW[S.set]; view.lat = v[0]; view.lon = v[1]; view.alt = fit(v[2]); applyView();
+  const geo = await fetch('geo.json').then(r => r.json());
+  for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) ensureTile(1, x, y);
+  ensureTile(0, 0, 0);
+  ITEMS = geo.items;
+  for (const it of ITEMS){ prepItem(it); BYID.set(it.id, it); BYSET[it.set].push(it); }
+  for (const k in BYSET) BYSET[k].sort((a, b) => b.area - a.area);
+  const lw = {world: [1.6, '#ffffff', 0.75], IND: [1.3, '#ffe7a8', 0.9], CHN: [1.3, '#ffe7a8', 0.9]};
+  for (const k in BYSET){
+    const m = new THREE.Mesh(buildLines(BYSET[k].flatMap(ringsOf)), lineMat(lw[k][1], lw[k][2], lw[k][0], k === 'world' ? 1.0007 : 1.0006));
+    m.renderOrder = k === 'world' ? 4 : 3; m.frustumCulled = false; lineLayers[k] = m; scene.add(m);
+  }
+  for (const [slot, px] of [['hover', 2.2], ['sel', 3.2], ['target', 3.4], ['good', 3.4], ['bad', 3.4]]){
+    const m = new THREE.Mesh(new THREE.BufferGeometry(), lineMat(COLORS[slot], slot === 'hover' ? 0.9 : 1, px, 1.0009));
+    m.visible = false; m.renderOrder = 6; m.frustumCulled = false; m.userData.id = null; m.material.userData.top = true; outlines[slot] = m; scene.add(m);
+  }
+  $('#loading').hidden = true;
+  renderChips(); updatePoolCount(); applyView();
+  enterMode('explore', true);
+  requestAnimationFrame(loop);
+  if (GH.token) ghSync();
+}
+boot().catch(err => { $('#loading').textContent = 'Could not load map data. Reload to try again.'; console.error(err); });
+})();
+</script>
+</body>
+</html>
