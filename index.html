@@ -1234,12 +1234,12 @@ function pickNext(){
   return cands[cands.length - 1];
 }
 const cityCountry = c => c.set === 'world' ? c.cn : (c.set === 'IND' ? 'India' : 'China');
-function cityKind(c){
-  if (c.cap === 1) return 'National capital · ' + c.cn;
-  if (c.cap === 2) return (c.set === 'IND' ? 'State or UT capital' : 'Provincial capital') + ' · ' + cityCountry(c);
-  return 'City · ' + cityCountry(c);
-}
-const cityLabel = c => c.set === 'world' ? `${c.n}, ${c.cn}` : `${c.n} (${c.st || cityCountry(c)})`;
+// "British Columbia, Canada": the city's province/state and country (the country is left off when it is the city itself, e.g. Singapore)
+const cityPlace = c => [c.st, cityCountry(c) === c.n ? '' : cityCountry(c)].filter(Boolean).join(', ');
+// "Victoria, British Columbia, Canada"
+const cityLabel = c => [c.n, cityPlace(c)].filter(Boolean).join(', ');
+function capKind(c){ return c.cap === 1 ? 'National capital' : c.cap === 2 ? (c.set === 'IND' ? 'State or UT capital' : 'Provincial capital') : ''; }
+function cityKind(c){ return [cityPlace(c), capKind(c)].filter(Boolean).join(' · '); }
 function subFor(it){
   if (it.isCity) return cityKind(it);
   if (it.set === 'world') return GROUPS[it.g] || '';
@@ -1413,7 +1413,7 @@ function answerFindCity(ll){
   marks = [{v: tapV, cls: ok ? 'good' : 'bad', ring: true, text: '+' + pts}, {v: c.lv, cls: 'good', ring: true, text: c.n}];
   if (km > 25) setMiss(ll, c.ll);
   const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb ' + (ok ? 'good' : 'bad');
-  fb.innerHTML = `<b>${fmt(Math.round(km))} km</b> from ${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>. <b>+${pts}</b><span class="cap">${esc(cityKind(c))}${c.st ? ' · ' + esc(c.st) : ''}</span>`;
+  fb.innerHTML = `<b>${fmt(Math.round(km))} km</b> from ${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>. <b>+${pts}</b><span class="cap">${esc(cityKind(c))}</span>`;
   const mid = tapV.clone().add(c.lv).normalize(); const [lon, lat] = v2ll(mid.lengthSq() > 0.01 ? mid : c.lv);
   flyTo(lat, lon, fit(clamp(tapV.angleTo(c.lv) * 1.9, S.set === 'world' ? 0.12 : 0.08, 2.6)));
   $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
@@ -1427,7 +1427,7 @@ function answerNameCity(id, typed){
   if (typed != null) $('#q-input').disabled = true;
   const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb ' + (ok ? 'good' : 'bad');
   const extra = !ok ? (other ? `Not ${esc(other.n)}. ` : typed ? `Not “${esc(typed)}”. ` : '') : '';
-  fb.innerHTML = (ok ? '<b>Correct.</b> ' : extra + 'It’s ') + `${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>` + `<span class="cap">${esc(cityKind(c))}${c.st ? ' · ' + esc(c.st) : ''}</span>`;
+  fb.innerHTML = (ok ? '<b>Correct.</b> ' : extra + 'It’s ') + `${c.fl ? c.fl + ' ' : ''}<b>${esc(c.n)}</b>` + `<span class="cap">${esc(cityKind(c))}</span>`;
   $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
   redrawOverlay(); finish(ok);
 }
@@ -1497,7 +1497,7 @@ $('#q-skip').onclick = () => {
     marks = [{v: t.lv, cls: 'good', ring: true, text: t.n}];
     document.querySelectorAll('#q-choices .choice').forEach(b => { b.disabled = true; if (b.dataset.id === t.id) b.classList.add('good'); });
     const fb = $('#q-fb'); fb.hidden = false; fb.className = 'fb bad';
-    fb.innerHTML = `${t.fl ? t.fl + ' ' : ''}<b>${esc(t.n)}</b> is marked in green.<span class="cap">${esc(cityKind(t))}${t.st ? ' · ' + esc(t.st) : ''}</span>`;
+    fb.innerHTML = `${t.fl ? t.fl + ' ' : ''}<b>${esc(t.n)}</b> is marked in green.<span class="cap">${esc(cityKind(t))}</span>`;
     $('#q-hintbtn').hidden = true; $('#q-skip').hidden = true; $('#q-next').hidden = false;
     if (S.mode === 'find') flyTo(t.ll[1], t.ll[0], fit(S.set === 'world' ? 0.3 : 0.15));
     redrawOverlay(); finish(false); return;
@@ -1520,10 +1520,9 @@ $('#q-hintbtn').onclick = () => {
     let ref = same.find(o => o.cid === it.cid && o.cap === 1 && it.set === 'world') || (it.set !== 'world' && same.find(o => o.cap === 2 && o.st === it.st));
     if (!ref || ref.id === it.id) ref = same.filter(o => o.pop > 1e6).sort((a, b) => a.lv.angleTo(it.lv) - b.lv.angleTo(it.lv))[0];
     if (S.mode === 'find'){
-      if (it.st) parts.push(`In <b>${esc(it.st)}</b>.`);
       if (ref) parts.push(`About ${fmt(Math.round(gcKm(ref.ll[0], ref.ll[1], it.ll[0], it.ll[1]) / 10) * 10)} km ${compass(ref.ll, it.ll)} of ${esc(ref.n)}.`);
     } else {
-      parts.push(`In <b>${esc(it.set === 'world' ? it.cn : it.st || cityCountry(it))}</b>. Starts with <b>${esc(it.n[0])}</b>.`);
+      parts.push(`In <b>${esc(cityPlace(it))}</b>. Starts with <b>${esc(it.n[0])}</b>.`);
     }
     $('#q-hint').innerHTML = parts.join(' '); $('#q-hint').hidden = false; $('#q-hintbtn').disabled = true;
     return;
