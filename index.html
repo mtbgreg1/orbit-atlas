@@ -1262,7 +1262,8 @@ function newQuestion(){
   $('#q-flag').textContent = find ? (it.fl || '') : '';
   $('#q-name').textContent = find ? it.n : '';
   $('#q-sub').textContent = find ? subFor(it) : '';
-  $('#q-sub').hidden = !find;
+  // Countries/provinces: the region is only revealed by the Hint button. Cities keep "province, country" in the prompt.
+  $('#q-sub').hidden = !find || !it.isCity;
   $('#o-typing-wrap').hidden = find;
   $('#q-skip').textContent = find ? 'Show me' : 'Reveal';
   if (find){
@@ -1528,6 +1529,7 @@ $('#q-hintbtn').onclick = () => {
     return;
   }
   if (S.mode === 'find'){
+    parts.push(`Region: <b>${esc(subFor(it))}</b>.`);
     if (it.cap) parts.push(`Capital: <b>${esc(it.cap)}</b>.`);
     const nb = (it.nb || []).map(id => BYID.get(id)).filter(Boolean).map(n => esc(n.n));
     if (nb.length) parts.push(`Borders ${nb.slice(0, 5).join(', ')}${nb.length > 5 ? ' and more' : ''}.`);
