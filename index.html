@@ -569,7 +569,7 @@ const OW = 4096, OH = 2048;
 const ovCanvas = document.createElement('canvas'); ovCanvas.width = OW; ovCanvas.height = OH;
 const ovCtx = ovCanvas.getContext('2d');
 const ovTex = new THREE.CanvasTexture(ovCanvas); ovTex.colorSpace = THREE.SRGBColorSpace; ovTex.anisotropy = Math.min(8, maxAniso);
-const overlay = new THREE.Mesh(gridGeom(-180, 180, 90, -90, 512, 256, 1, {equi: true}), new THREE.MeshBasicMaterial({map: ovTex, transparent: true, depthWrite: false}));
+const overlay = new THREE.Mesh(gridGeom(-180, 180, 90, -90, 512, 256, 1, {equi: true}), new THREE.MeshBasicMaterial({map: ovTex, transparent: true, depthWrite: false, depthTest: false}));
 overlay.renderOrder = 2; scene.add(overlay);
 
 /* ---------------- data ---------------- */
@@ -747,6 +747,7 @@ function applyView(){
   const lift = 1 + clamp(view.alt * 0.004, 0.00001, 0.0007);
   for (const m of lineMats) m.uniforms.uLift.value = lift * (m.userData.top ? 1 + clamp(view.alt * 0.0005, 0.000003, 0.0002) : 1);
   overlay.scale.setScalar(1 + clamp(view.alt * 0.002, 0.000025, 0.0003));
+  overlay.material.opacity = clamp(view.alt / 0.12, 0.18, 1); // fade fills when zoomed in close so imagery stays readable
   const mobile = W <= 760;
   camera.setViewOffset(W, H, mobile ? 0 : -178, mobile ? Math.round(H * 0.2) : 0, W, H);
   camera.updateMatrixWorld();
